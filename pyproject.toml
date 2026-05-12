@@ -31,6 +31,9 @@ dev = [
     "mypy>=1.13",
 ]
 
+[tool.setuptools.packages.find]
+where = ["backend/src"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
