@@ -70,7 +70,7 @@ async def ingest_parcel(ctx, parcel_id: str, tenant_id: str, geometry: dict, par
 
 def _cascade_merge(results, depths):
     merged = {f"{d.depth_from}-{d.depth_to}": {} for d in depths}
-    for result in sorted(results, key=lambda r: PROVIDER_PRIORITIES.get(r.provider, 0)):
+    for result in sorted(results, key=lambda r: PROVIDER_PRIORITIES.get(r.provider, 0), reverse=True):
         for horizon in result.horizons:
             key = f"{horizon.depth_from}-{horizon.depth_to}"
             if key in merged:
