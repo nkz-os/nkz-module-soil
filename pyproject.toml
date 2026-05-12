@@ -1,0 +1,36 @@
+[project]
+name = "nkz-soil"
+version = "0.1.0"
+description = "Nekazari Soil Module — unified soil data layer"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "nkz-platform-sdk>=0.1.0",
+    "arq>=0.26",
+    "redis>=5.0",
+    "httpx>=0.28",
+    "pydantic>=2.10",
+    "rasterio>=1.4",
+    "shapely>=2.0",
+    "geopandas>=1.0",
+    "pyproj>=3.7",
+    "numpy>=2.0",
+    "boto3>=1.35",
+    "OWSLib>=0.31",
+    "scikit-gstat>=1.0",
+    "PyKrige>=1.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
