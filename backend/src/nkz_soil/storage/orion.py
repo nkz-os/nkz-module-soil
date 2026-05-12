@@ -1,10 +1,15 @@
-from nkz_platform_sdk import OrionClient as SDKOrionClient
+try:
+    from nkz_platform_sdk import OrionClient as SDKOrionClient
+except ImportError:
+    SDKOrionClient = None
 
 
 class OrionClient:
     """Wrapper around nkz-platform-sdk OrionClient with soil-specific queries."""
 
     def __init__(self, tenant_id: str | None = None):
+        if SDKOrionClient is None:
+            raise ImportError("nkz-platform-sdk is required for OrionClient")
         self._client = SDKOrionClient(tenant_id=tenant_id)
 
     async def __aenter__(self):
