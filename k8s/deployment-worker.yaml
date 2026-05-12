@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soil-module-worker
+  namespace: nekazari
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: soil-module-worker
+  template:
+    metadata:
+      labels:
+        app: soil-module-worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/nkz-os/nkz-module-soil/worker:latest
+          envFrom:
+            - configMapRef:
+                name: soil-module-config
+          env:
+            - name: REDIS_URL
+              value: "redis://redis-service:6379"
+          command: ["arq", "nkz_soil.workers.ingest.WorkerSettings"]

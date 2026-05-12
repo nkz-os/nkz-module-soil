@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soil-module-config
+  namespace: nekazari
+data:
+  CONTEXT_URL: "http://api-gateway-service:5000/ngsi-ld-context.json"
+  CACHE_TTL_BASELINE: "31536000"
+  CACHE_TTL_REVISABLE: "2592000"
+  INGESTION_BUFFER_M: "50.0"
+  PROVIDER_RETRY_MAX: "5"
+  PROVIDER_ISOLATE_SECONDS: "900"

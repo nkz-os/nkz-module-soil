@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soil-module-api
+  namespace: nekazari
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: soil-module-api
+  template:
+    metadata:
+      labels:
+        app: soil-module-api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/nkz-os/nkz-module-soil/api:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: soil-module-config
+          env:
+            - name: ORION_BASE_URL
+              value: "http://orion-ld-service:1026"
+            - name: MINIO_ENDPOINT
+              value: "http://minio-service:9000"
+            - name: REDIS_URL
+              value: "redis://redis-service:6379"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
