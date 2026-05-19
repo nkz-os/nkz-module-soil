@@ -266,11 +266,16 @@ async def reap_stuck_jobs(ctx: dict) -> None:
 
 
 def _parse_redis_url(url: str) -> RedisSettings:
-    """Parse redis://host:port/db URL into RedisSettings."""
+    """Parse redis://[:password@]host:port/db URL into RedisSettings."""
     url = url.replace("redis://", "").replace("rediss://", "")
-    # Remove credentials if present
+    password = None
+    # Extract password if present
     if "@" in url:
-        url = url.split("@", 1)[1]
+        auth_part, url = url.split("@", 1)
+        if auth_part.startswith(":"):
+            password = auth_part[1:]  # :password@host
+        elif ":" in auth_part:
+            _, password = auth_part.split(":", 1)  # user:password@host
     parts = url.split("/")
     db = 0
     if len(parts) > 1 and parts[1].strip():
@@ -278,7 +283,7 @@ def _parse_redis_url(url: str) -> RedisSettings:
     host_port = parts[0].split(":")
     host = host_port[0]
     port = int(host_port[1]) if len(host_port) > 1 else 6379
-    return RedisSettings(host=host, port=port, database=db)
+    return RedisSettings(host=host, port=port, database=db, password=password)
 
 
 class WorkerSettings:
