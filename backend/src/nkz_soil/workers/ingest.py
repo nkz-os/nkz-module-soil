@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+
+from arq.connections import RedisSettings
 
 from nkz_soil.config import CONTEXT_URL, REDIS_URL
 from nkz_soil.models.domain import DepthInterval, SoilProperty
@@ -262,8 +265,24 @@ async def reap_stuck_jobs(ctx: dict) -> None:
     pass
 
 
+def _parse_redis_url(url: str) -> RedisSettings:
+    """Parse redis://host:port/db URL into RedisSettings."""
+    url = url.replace("redis://", "").replace("rediss://", "")
+    # Remove credentials if present
+    if "@" in url:
+        url = url.split("@", 1)[1]
+    parts = url.split("/")
+    db = 0
+    if len(parts) > 1 and parts[1].strip():
+        db = int(parts[1])
+    host_port = parts[0].split(":")
+    host = host_port[0]
+    port = int(host_port[1]) if len(host_port) > 1 else 6379
+    return RedisSettings(host=host, port=port, database=db)
+
+
 class WorkerSettings:
     functions = [ingest_parcel, reap_stuck_jobs]
-    redis_settings = {"address": REDIS_URL}
+    redis_settings = _parse_redis_url(REDIS_URL)
     on_startup = startup
     on_shutdown = shutdown
