@@ -70,6 +70,7 @@ class SoilDataResult:
     horizons: list[Horizon]
     uncertainty: float
     geometry: dict
+    attribution: str | None = None
 
 
 @dataclass

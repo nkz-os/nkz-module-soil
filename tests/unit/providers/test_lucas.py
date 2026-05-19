@@ -1,10 +1,10 @@
 import pytest
-from nkz_soil.providers.lucas import LucasPointsProvider
+from nkz_soil.providers.lucas import LucasProvider
 
 
 @pytest.fixture
 def provider():
-    return LucasPointsProvider()
+    return LucasProvider()
 
 
 def test_provider_metadata(provider):

@@ -62,5 +62,15 @@ export function useSoilApi() {
 
     uploadCsv: (formData: FormData) =>
       api.post('/v1/soil/sampling-points/batch', formData),
+
+    getMetrics: () =>
+      api.get<{ providers: Array<{
+        provider: string;
+        latency: { min: number; max: number; avg: number; p95: number; count: number };
+        error_rate: number;
+        cache: { hits: number; misses: number; hit_rate: number };
+        total_fetches: number;
+        total_errors: number;
+      }> }>('/v1/soil/metrics'),
   };
 }

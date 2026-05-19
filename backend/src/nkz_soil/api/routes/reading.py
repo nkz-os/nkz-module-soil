@@ -1,48 +1,78 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
 from nkz_soil.api.dependencies import get_tenant_id
+from nkz_soil.api.limiter import limiter
 from nkz_soil.storage.orion import OrionClient
 
 router = APIRouter()
 
 
 @router.get("/parcel/{parcel_id}/summary")
+@limiter.exempt
 async def parcel_summary(parcel_id: str, tenant_id: str = Depends(get_tenant_id)):
     async with OrionClient(tenant_id) as orion:
         entities = await orion.query_entities(type="AgriSoil")
-        matching = [e for e in entities
-                    if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)]
+        matching = [
+            e
+            for e in entities
+            if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
+        ]
         if not matching:
-            raise HTTPException(status_code=404, detail="No AgriSoil found for this parcel")
+            raise HTTPException(
+                status_code=404, detail="No AgriSoil found for this parcel"
+            )
         return matching[0]
 
 
 @router.get("/parcel/{parcel_id}/horizons")
-async def parcel_horizons(parcel_id: str, depth: str = "0-30", tenant_id: str = Depends(get_tenant_id)):
+@limiter.exempt
+async def parcel_horizons(
+    parcel_id: str, depth: str = "0-30", tenant_id: str = Depends(get_tenant_id)
+):
     depth_from, depth_to = map(int, depth.split("-"))
     async with OrionClient(tenant_id) as orion:
         entities = await orion.query_entities(type="AgriSoil")
-        matching = [e for e in entities
-                    if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)]
+        matching = [
+            e
+            for e in entities
+            if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
+        ]
         if not matching:
             raise HTTPException(status_code=404, detail="No AgriSoil found")
         horizons = matching[0].get("horizons", {}).get("value", [])
-        filtered = [h for h in horizons if h["depthFrom"] >= depth_from and h["depthTo"] <= depth_to]
+        filtered = [
+            h
+            for h in horizons
+            if h["depthFrom"] >= depth_from and h["depthTo"] <= depth_to
+        ]
         return {"horizons": filtered}
 
 
 @router.get("/parcel/{parcel_id}/raster")
-async def parcel_raster(parcel_id: str, property: str, depth: str = "0-30", tenant_id: str = Depends(get_tenant_id)):
+@limiter.exempt
+async def parcel_raster(
+    parcel_id: str,
+    property: str,
+    depth: str = "0-30",
+    tenant_id: str = Depends(get_tenant_id),
+):
     async with OrionClient(tenant_id) as orion:
         entities = await orion.query_entities(type="SoilDerivedRaster")
         depth_from, depth_to = map(int, depth.split("-"))
-        matching = [e for e in entities
-                    if (e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
-                        and e.get("property", {}).get("value") == property
-                        and e.get("depthFrom", {}).get("value") == depth_from
-                        and e.get("depthTo", {}).get("value") == depth_to)]
+        matching = [
+            e
+            for e in entities
+            if (
+                e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
+                and e.get("property", {}).get("value") == property
+                and e.get("depthFrom", {}).get("value") == depth_from
+                and e.get("depthTo", {}).get("value") == depth_to
+            )
+        ]
         if not matching:
             raise HTTPException(status_code=404, detail="No raster found")
-        from nkz_soil.storage.minio import get_minio_client, generate_presigned_url
+        from nkz_soil.storage.minio import generate_presigned_url, get_minio_client
+
         s3 = get_minio_client()
         raster = matching[0]
         uri = raster.get("storageUri", {}).get("value", "")
@@ -52,11 +82,17 @@ async def parcel_raster(parcel_id: str, property: str, depth: str = "0-30", tena
 
 
 @router.get("/parcel/{parcel_id}/hydrologic-group")
-async def parcel_hydrologic_group(parcel_id: str, tenant_id: str = Depends(get_tenant_id)):
+@limiter.exempt
+async def parcel_hydrologic_group(
+    parcel_id: str, tenant_id: str = Depends(get_tenant_id)
+):
     async with OrionClient(tenant_id) as orion:
         entities = await orion.query_entities(type="AgriSoil")
-        matching = [e for e in entities
-                    if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)]
+        matching = [
+            e
+            for e in entities
+            if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
+        ]
         if not matching:
             raise HTTPException(status_code=404, detail="No AgriSoil found")
         horizons = matching[0].get("horizons", {}).get("value", [])
@@ -67,7 +103,10 @@ async def parcel_hydrologic_group(parcel_id: str, tenant_id: str = Depends(get_t
 
 
 @router.get("/point")
-async def point_query(lat: float, lon: float, depth: str = "0-30", tenant_id: str = Depends(get_tenant_id)):
+@limiter.exempt
+async def point_query(
+    lat: float, lon: float, depth: str = "0-30", tenant_id: str = Depends(get_tenant_id)
+):
     depth_from, depth_to = map(int, depth.split("-"))
     geometry = {"type": "Point", "coordinates": [lon, lat]}
     async with OrionClient(tenant_id) as orion:
@@ -75,10 +114,22 @@ async def point_query(lat: float, lon: float, depth: str = "0-30", tenant_id: st
         if not entities:
             raise HTTPException(status_code=404, detail="No soil data at this point")
         horizons = entities[0].get("horizons", {}).get("value", [])
-        filtered = [h for h in horizons if h["depthFrom"] >= depth_from and h["depthTo"] <= depth_to]
-        return {"horizons": filtered, "source": entities[0].get("dataSource", {}).get("value")}
+        filtered = [
+            h
+            for h in horizons
+            if h["depthFrom"] >= depth_from and h["depthTo"] <= depth_to
+        ]
+        return {
+            "horizons": filtered,
+            "source": entities[0].get("dataSource", {}).get("value"),
+        }
 
 
 @router.get("/tenant/quota")
+@limiter.exempt
 async def tenant_quota(tenant_id: str = Depends(get_tenant_id)):
-    return {"tenantId": tenant_id, "evaluatedHectares": 0, "contractedHectares": 0}
+    return {
+        "tenantId": tenant_id,
+        "evaluatedHectares": 0,
+        "contractedHectares": 0,
+    }

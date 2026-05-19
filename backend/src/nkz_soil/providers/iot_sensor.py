@@ -1,5 +1,16 @@
 from datetime import timedelta, datetime
-from nkz_soil.models.domain import SoilProperty, DepthInterval, SoilDataResult, ProviderHealth, GeographicScope, Horizon
+
+from typing import Any
+
+from nkz_soil.models.domain import (
+    SoilProperty,
+    DepthInterval,
+    SoilDataResult,
+    ProviderHealth,
+    GeographicScope,
+    Horizon,
+)
+from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.storage.orion import OrionClient
 
 
@@ -20,9 +31,14 @@ class IotSensorProvider:
     DEVICE_CATEGORIES = list(SENSOR_CATEGORY_TO_PROPERTY.keys())
 
     def covers(self, geometry: dict) -> bool:
-        return True
+        return geometry_intersects_bbox(geometry, self.geographic_scope.bbox)
 
-    async def fetch(self, geometry: dict, properties: list[SoilProperty], depths: list[DepthInterval]) -> SoilDataResult:
+    async def fetch(
+        self,
+        geometry: dict,
+        properties: list[SoilProperty],
+        depths: list[DepthInterval],
+    ) -> SoilDataResult:
         requested_properties = {p.value for p in properties}
 
         async with OrionClient() as orion:
@@ -37,7 +53,7 @@ class IotSensorProvider:
                 provider=self.name, horizons=[], uncertainty=0.05, geometry=geometry,
             )
 
-        horizon_data = {
+        horizon_data: dict[str, Any] = {
             "depth_from": depths[0].depth_from,
             "depth_to": depths[-1].depth_to,
         }
@@ -62,6 +78,10 @@ class IotSensorProvider:
 
     async def health(self) -> ProviderHealth:
         return ProviderHealth(
-            name=self.name, status="ok", latency_ms=0,
-            last_success=datetime.now(), error_count=0, cache_hit_rate=0.0,
+            name=self.name,
+            status="ok",
+            latency_ms=0,
+            last_success=datetime.now(),
+            error_count=0,
+            cache_hit_rate=0.0,
         )

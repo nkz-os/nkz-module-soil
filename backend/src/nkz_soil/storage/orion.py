@@ -3,9 +3,16 @@ try:
 except ImportError:
     SDKOrionClient = None
 
+from nkz_soil.config import CONTEXT_URL
+
 
 class OrionClient:
-    """Wrapper around nkz-platform-sdk OrionClient with soil-specific queries."""
+    """Wrapper around nkz-platform-sdk OrionClient with soil-specific queries.
+
+    Enforces NGSI-LD strict mode:
+    - application/ld+json: @context embedded in body
+    - application/json: Link header with context URL
+    """
 
     def __init__(self, tenant_id: str | None = None):
         if SDKOrionClient is None:
@@ -19,26 +26,36 @@ class OrionClient:
     async def __aexit__(self, *args):
         await self._client.__aexit__(*args)
 
-    async def query_entities(self, type: str, category: list[str] | None = None,
-                              geometry: dict | None = None) -> list[dict]:
-        """Query NGSI-LD entities by type, optional category filter, and geometry."""
-        query = f'?type={type}'
+    async def query_entities(
+        self,
+        type: str,
+        category: list[str] | None = None,
+        geometry: dict | None = None,
+    ) -> list[dict]:
+        query = f"?type={type}"
         if category:
             cat_filter = ",".join(f'"{c}"' for c in category)
-            query += f'&q=category==[{cat_filter}]'
+            query += f"&q=category==[{cat_filter}]"
         if geometry:
             coords = geometry.get("coordinates")
             if coords:
-                query += f'&georel=near;maxDistance=50'
+                query += "&georel=near;maxDistance=50"
                 if geometry["type"] == "Point":
-                    query += f'&geometry=Point&coordinates=[{coords[0]},{coords[1]}]'
-        return await self._client.get(f'/ngsi-ld/v1/entities{query}')
+                    query += f"&geometry=Point&coordinates=[{coords[0]},{coords[1]}]"
+                elif geometry["type"] == "Polygon":
+                    flat = [c for point in coords[0] for c in point]
+                    query += f"&geometry=Polygon&coordinates=[[{','.join(str(c) for c in flat)}]]"
+        return await self._client.get(f"/ngsi-ld/v1/entities{query}")
 
     async def create_entity(self, entity: dict) -> dict:
-        return await self._client.post('/ngsi-ld/v1/entities', json=entity)
+        if "@context" not in entity:
+            entity["@context"] = [CONTEXT_URL]
+        return await self._client.post("/ngsi-ld/v1/entities", json=entity)
 
     async def patch_entity(self, entity_id: str, attrs: dict) -> None:
-        await self._client.patch(f'/ngsi-ld/v1/entities/{entity_id}/attrs', json=attrs)
+        await self._client.patch(
+            f"/ngsi-ld/v1/entities/{entity_id}/attrs", json=attrs
+        )
 
     async def delete_entity(self, entity_id: str) -> None:
-        await self._client.delete(f'/ngsi-ld/v1/entities/{entity_id}')
+        await self._client.delete(f"/ngsi-ld/v1/entities/{entity_id}")

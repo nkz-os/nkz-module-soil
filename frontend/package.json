@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "nkz": {
+    "moduleId": "soil"
+  },
   "scripts": {
     "dev": "nkz module dev",
     "build": "vite build",
@@ -10,7 +13,7 @@
     "validate": "nkz module validate"
   },
   "dependencies": {
-    "@nekazari/module-kit": "^0.1.0",
+    "@nekazari/module-kit": "^0.6.0",
     "@nekazari/sdk": "^1.1.0",
     "@nekazari/ui-kit": "^1.0.0",
     "@nekazari/viewer-kit": "^1.0.0",
@@ -20,7 +23,7 @@
     "i18next": "^24.0.0"
   },
   "devDependencies": {
-    "@nekazari/module-builder": "^1.0.0",
+    "@nekazari/module-builder": "^1.2.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
   }

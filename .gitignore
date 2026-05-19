@@ -3,7 +3,15 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 *.egg-info/
 dist/
 build/
-nkz-module-soil-spec.md
+frontend/node_modules/
+frontend/dist/
+internal-docs/
+.opencode/
+*.env
+.env.*
+!backend/.env.example

@@ -16,10 +16,33 @@ spec:
       containers:
         - name: worker
           image: ghcr.io/nkz-os/nkz-module-soil/worker:latest
+          imagePullPolicy: Always
           envFrom:
             - configMapRef:
                 name: soil-module-config
+            - secretRef:
+                name: soil-module-secret
           env:
             - name: REDIS_URL
               value: "redis://redis-service:6379"
-          command: ["arq", "nkz_soil.workers.ingest.WorkerSettings"]
+            - name: ORION_BASE_URL
+              value: "http://orion-ld-service:1026"
+            - name: MINIO_ENDPOINT
+              value: "http://minio-service:9000"
+            - name: CONTEXT_URL
+              value: "http://api-gateway-service:5000/ngsi-ld-context.json"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "python -c \"from arq.connections import ArqRedis; import asyncio; asyncio.run(ArqRedis.from_url('${REDIS_URL}').info())\""
+            initialDelaySeconds: 15
+            periodSeconds: 30

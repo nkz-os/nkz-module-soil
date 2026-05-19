@@ -1,4 +1,6 @@
 from fastapi import APIRouter
+
+from nkz_soil.api.limiter import limiter
 from nkz_soil.providers.base import ProviderRegistry
 
 router = APIRouter()
@@ -12,6 +14,7 @@ def set_registry(registry: ProviderRegistry):
 
 
 @router.get("/providers/health")
+@limiter.exempt
 async def provider_health():
     if not _registry:
         return {"providers": []}
@@ -19,20 +22,34 @@ async def provider_health():
     for p in _registry.get_all():
         try:
             health = await p.health()
-            results.append({"name": p.name, "status": health.status, "latency_ms": health.latency_ms})
+            results.append(
+                {
+                    "name": p.name,
+                    "status": health.status,
+                    "latency_ms": health.latency_ms,
+                }
+            )
         except Exception:
             results.append({"name": p.name, "status": "down", "latency_ms": 0})
     return {"providers": results}
 
 
 @router.get("/providers/coverage")
+@limiter.exempt
 async def provider_coverage(bbox: str):
     coords = [float(c) for c in bbox.split(",")]
-    geometry = {"type": "Polygon", "coordinates": [[
-        [coords[0], coords[1]], [coords[2], coords[1]],
-        [coords[2], coords[3]], [coords[0], coords[3]],
-        [coords[0], coords[1]],
-    ]]}
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [coords[0], coords[1]],
+                [coords[2], coords[1]],
+                [coords[2], coords[3]],
+                [coords[0], coords[3]],
+                [coords[0], coords[1]],
+            ]
+        ],
+    }
     if not _registry:
         return {"providers": []}
     results = []

@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from nkz_soil.api.limiter import limiter
+
 router = APIRouter()
 
 MANIFEST = {
@@ -69,13 +71,18 @@ MANIFEST = {
 
 
 @router.get("/layers/manifest")
+@limiter.exempt
 async def layers_manifest():
     return MANIFEST
 
 
 @router.get("/layers/{layer_id}/render")
-async def render_layer(layer_id: str, parcel_id: str, depth: str = "0-30"):
-    from nkz_soil.storage.minio import get_minio_client, generate_presigned_url
+@limiter.exempt
+async def render_layer(
+    layer_id: str, parcel_id: str, depth: str = "0-30", tenant_id: str = None
+):
+    from nkz_soil.storage.minio import generate_presigned_url, get_minio_client
+
     s3 = get_minio_client()
     key = f"{parcel_id}/v1/{layer_id}-{depth}.tif"
     url = generate_presigned_url(s3, "nkz-soil", key)

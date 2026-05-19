@@ -1,5 +1,4 @@
-from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Any
 
 
@@ -70,7 +69,7 @@ class SoilDerivedRaster(BaseModel):
     id: str
     type: str = "SoilDerivedRaster"
     refAgriParcel: Relationship
-    property: Property
+    soilProperty: Property
     depthFrom: Property
     depthTo: Property
     storageUri: Property

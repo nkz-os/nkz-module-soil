@@ -63,7 +63,7 @@ async def test_fetch_returns_horizons(provider):
         }
     }
 
-    respx.post("https://rest.isric.org/soilgrids/v2.0/properties/query").mock(
+    respx.get("https://rest.isric.org/soilgrids/v2.0/properties/query").mock(
         return_value=Response(200, json=mock_response)
     )
 
@@ -86,8 +86,8 @@ async def test_fetch_returns_horizons(provider):
 @respx.mock
 @pytest.mark.asyncio
 async def test_health_ok(provider):
-    respx.get("https://rest.isric.org/soilgrids/v2.0/properties/query").mock(
-        return_value=Response(200, json={})
+    respx.get("https://files.isric.org/soilgrids/latest/data/").mock(
+        return_value=Response(200)
     )
     health = await provider.health()
     assert health.status == "ok"

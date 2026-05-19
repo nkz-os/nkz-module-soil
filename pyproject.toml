@@ -11,15 +11,10 @@ dependencies = [
     "redis>=5.0",
     "httpx>=0.28",
     "pydantic>=2.10",
-    "rasterio>=1.4",
     "shapely>=2.0",
-    "geopandas>=1.0",
-    "pyproj>=3.7",
-    "numpy>=2.0",
     "boto3>=1.35",
     "OWSLib>=0.31",
-    "scikit-gstat>=1.0",
-    "PyKrige>=1.7",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +24,14 @@ dev = [
     "respx>=0.21",
     "ruff>=0.8",
     "mypy>=1.13",
+]
+geo = [
+    "rasterio>=1.4",
+    "geopandas>=1.0",
+    "pyproj>=3.7",
+    "numpy>=2.0",
+    "scikit-gstat>=1.0",
+    "PyKrige>=1.7",
 ]
 
 [tool.setuptools.packages.find]

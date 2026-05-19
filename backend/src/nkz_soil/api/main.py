@@ -1,38 +1,63 @@
-from fastapi import FastAPI, Depends
-from nkz_soil.api.routes.reading import router as reading_router
-from nkz_soil.api.routes.writing import router as writing_router
+import os
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from nkz_soil.api.limiter import limiter
 from nkz_soil.api.routes.layers import router as layers_router
+from nkz_soil.api.routes.metrics import router as metrics_router
 from nkz_soil.api.routes.providers import router as providers_router, set_registry
+from nkz_soil.api.routes.reading import router as reading_router
+from nkz_soil.api.routes.subscriptions import router as subscriptions_router
+from nkz_soil.api.routes.writing import router as writing_router
 from nkz_soil.providers.base import ProviderRegistry
-from nkz_soil.providers.soilgrids import SoilGridsProvider
-from nkz_soil.providers.iot_sensor import IotSensorProvider
-from nkz_soil.providers.lab_analysis import LabAnalysisProvider
+from nkz_soil.providers.bgs import BgsProvider
+from nkz_soil.providers.eu_soil_hydro import EuSoilHydroGridsProvider
 from nkz_soil.providers.idena import IdenaProvider
 from nkz_soil.providers.igme import IgmeProvider
-from nkz_soil.providers.bgs import BgsProvider
+from nkz_soil.providers.iot_sensor import IotSensorProvider
+from nkz_soil.providers.lab_analysis import LabAnalysisProvider
 from nkz_soil.providers.lucas import LucasPointsProvider
-from nkz_soil.providers.eu_soil_hydro import EuSoilHydroGridsProvider
+from nkz_soil.providers.soilgrids import SoilGridsProvider
 
 
 def create_app() -> FastAPI:
     registry = ProviderRegistry()
-    registry.register(SoilGridsProvider())
-    registry.register(IotSensorProvider())
     registry.register(LabAnalysisProvider())
+    registry.register(IotSensorProvider())
     registry.register(IdenaProvider())
     registry.register(IgmeProvider())
     registry.register(BgsProvider())
     registry.register(LucasPointsProvider())
     registry.register(EuSoilHydroGridsProvider())
+    registry.register(SoilGridsProvider())
     set_registry(registry)
 
     app = FastAPI(title="nkz-module-soil", version="0.1.0")
+
+    allowed_origins = os.environ.get(
+        "CORS_ALLOWED_ORIGINS",
+        "https://nkz.robotika.cloud,https://nekazari.robotika.cloud",
+    ).split(",")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[o.strip() for o in allowed_origins if o.strip()],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.state.limiter = limiter
+
     app.include_router(reading_router, prefix="/v1/soil")
     app.include_router(writing_router, prefix="/v1/soil")
     app.include_router(layers_router, prefix="/v1/soil")
     app.include_router(providers_router, prefix="/v1/soil")
+    app.include_router(subscriptions_router, prefix="/v1/soil")
+    app.include_router(metrics_router, prefix="/v1/soil")
 
     @app.get("/health")
+    @limiter.exempt
     async def health():
         return {"status": "ok"}
 

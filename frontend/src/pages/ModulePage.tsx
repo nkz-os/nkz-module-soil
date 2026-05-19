@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SlotShellCompact } from '@nekazari/viewer-kit';
 import { useSoilApi } from '../hooks/useSoilApi';
 
 type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
@@ -16,30 +17,30 @@ export default function ModulePage() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
-      <h1 className="text-nkz-xl font-bold">{t('title')}</h1>
+    <SlotShellCompact title={t('title')}>
+      <div className="max-w-5xl mx-auto p-6 space-y-6">
+        <div className="flex gap-2 border-b border-nkz-border">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 text-nkz-sm border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'border-nkz-primary text-nkz-primary'
+                  : 'border-transparent text-nkz-muted hover:text-nkz-text'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-      <div className="flex gap-2 border-b border-nkz-border">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 text-nkz-sm border-b-2 transition-colors ${
-              activeTab === tab.id
-                ? 'border-nkz-primary text-nkz-primary'
-                : 'border-transparent text-nkz-muted hover:text-nkz-text'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {activeTab === 'dashboard' && <DashboardTab />}
+        {activeTab === 'manual' && <ManualSamplingTab />}
+        {activeTab === 'csv' && <CsvUploadTab />}
+        {activeTab === 'history' && <HistoryTab />}
       </div>
-
-      {activeTab === 'dashboard' && <DashboardTab />}
-      {activeTab === 'manual' && <ManualSamplingTab />}
-      {activeTab === 'csv' && <CsvUploadTab />}
-      {activeTab === 'history' && <HistoryTab />}
-    </div>
+    </SlotShellCompact>
   );
 }
 
@@ -108,6 +109,7 @@ function ManualSamplingTab() {
         penetration_resistance: form.penetrationResistance ? parseFloat(form.penetrationResistance) : undefined,
       });
       setResult(t('success'));
+      setForm(Object.fromEntries(fields.map((f) => [f.key, ''])));
     } catch {
       setResult(t('error'));
     }
@@ -142,14 +144,65 @@ function ManualSamplingTab() {
 
 function CsvUploadTab() {
   const { t } = useTranslation('soil');
+  const api = useSoilApi();
+  const [result, setResult] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      setFileName(file.name);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        await api.uploadCsv(formData);
+        setResult(t('success'));
+      } catch {
+        setResult(t('error'));
+      }
+    },
+    [api, t]
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    },
+    [handleFile]
+  );
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) handleFile(file);
+    },
+    [handleFile]
+  );
 
   return (
     <div className="bg-nkz-surface rounded-nkz-md p-6">
       <h2 className="text-nkz-lg font-medium mb-4">{t('tabs.csv')}</h2>
-      <div className="border-2 border-dashed border-nkz-border rounded-nkz-md p-8 text-center">
-        <p className="text-nkz-muted">{t('csvDropzone')}</p>
+      <div
+        className="border-2 border-dashed border-nkz-border rounded-nkz-md p-8 text-center"
+        onDrop={handleDrop}
+        onDragOver={(e) => e.preventDefault()}
+      >
+        <label className="cursor-pointer">
+          <span className="text-nkz-muted">{t('csvDropzone')}</span>
+          <input
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleChange}
+          />
+        </label>
+        {fileName && (
+          <p className="text-nkz-xs text-nkz-muted mt-2">{fileName}</p>
+        )}
         <p className="text-nkz-xs text-nkz-muted mt-2">{t('csvFormat')}</p>
       </div>
+      {result && <p className="mt-2 text-nkz-sm">{result}</p>}
     </div>
   );
 }
