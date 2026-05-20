@@ -13,17 +13,18 @@
     "validate": "nkz module validate"
   },
   "dependencies": {
-    "@nekazari/module-kit": "^0.6.0",
-    "@nekazari/sdk": "^1.1.0",
-    "@nekazari/ui-kit": "^1.0.0",
-    "@nekazari/viewer-kit": "^1.0.0",
+    "@nekazari/module-kit": "workspace:*",
+    "@nekazari/sdk": "workspace:*",
+    "@nekazari/ui-kit": "workspace:*",
+    "@nekazari/viewer-kit": "workspace:*",
+    "i18next": "^23.16.8",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "react-i18next": "^15.0.0",
-    "i18next": "^24.0.0"
+    "react-i18next": "^14.1.3",
+    "react-router-dom": "^6.26.0"
   },
   "devDependencies": {
-    "@nekazari/module-builder": "^1.2.0",
+    "@nekazari/module-builder": "workspace:*",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
   }
