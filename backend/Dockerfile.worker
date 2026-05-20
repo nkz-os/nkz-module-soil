@@ -2,11 +2,6 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install nkz-platform-sdk from source (not on PyPI)
-RUN git clone --depth 1 https://github.com/nkz-os/nkz.git /tmp/nkz-src && \
-    pip install --no-cache-dir /tmp/nkz-src/services/nkz-platform-sdk && \
-    rm -rf /tmp/nkz-src
-
 COPY pyproject.toml ./
 COPY backend/ ./backend/
 
