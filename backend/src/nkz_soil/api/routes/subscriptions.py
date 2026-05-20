@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from nkz_soil.api.limiter import limiter
-from nkz_soil.config import REDIS_URL
+from nkz_soil.config import CONTEXT_URL, REDIS_URL
 from nkz_soil.storage.orion import OrionClient
 
 logger = logging.getLogger(__name__)
@@ -161,7 +161,7 @@ async def register_subscription(tenant_id: str = None):
                 "accept": "application/json",
             },
         },
-        "@context": ["http://api-gateway-service:5000/ngsi-ld-context.json"],
+        "@context": [CONTEXT_URL],
     }
 
     async with OrionClient(tenant_id) as orion:

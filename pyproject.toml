@@ -15,6 +15,7 @@ dependencies = [
     "boto3>=1.35",
     "OWSLib>=0.31",
     "slowapi>=0.1.9",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

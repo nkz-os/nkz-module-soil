@@ -2,6 +2,7 @@ import pytest
 import respx
 from httpx import Response
 from datetime import timedelta
+from unittest.mock import patch
 from nkz_soil.providers.soilgrids import SoilGridsProvider
 from nkz_soil.models.domain import SoilProperty, DepthInterval, GeographicScope
 
@@ -26,6 +27,7 @@ def test_covers_anywhere(provider):
 @respx.mock
 @pytest.mark.asyncio
 async def test_fetch_returns_horizons(provider):
+    """Test REST API fetch path (COG disabled via mock)."""
     mock_response = {
         "properties": {
             "layers": [
@@ -67,14 +69,16 @@ async def test_fetch_returns_horizons(provider):
         return_value=Response(200, json=mock_response)
     )
 
-    result = await provider.fetch(
-        geometry={
-            "type": "Polygon",
-            "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]],
-        },
-        properties=[SoilProperty.SAND, SoilProperty.CLAY, SoilProperty.SILT],
-        depths=[DepthInterval(depth_from=0, depth_to=5)],
-    )
+    # Force REST path by disabling rasterio
+    with patch("nkz_soil.providers.soilgrids._HAS_RASTERIO", False):
+        result = await provider.fetch(
+            geometry={
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+            },
+            properties=[SoilProperty.SAND, SoilProperty.CLAY, SoilProperty.SILT],
+            depths=[DepthInterval(depth_from=0, depth_to=5)],
+        )
 
     assert result.provider == "soilgrids"
     assert len(result.horizons) > 0

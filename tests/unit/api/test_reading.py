@@ -86,9 +86,30 @@ def test_hydrologic_group(client, mock_orion):
     assert resp.json()["hydrologicGroup"] == "B"
 
 
-def test_tenant_quota(client):
+def test_tenant_quota(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "location": {
+                "value": {
+                    "type": "Polygon",
+                    "coordinates": [[[-2.0, 42.0], [-1.0, 42.0], [-1.0, 43.0], [-2.0, 43.0], [-2.0, 42.0]]],
+                }
+            },
+        },
+    ]
     resp = client.get("/v1/soil/tenant/quota", headers={"X-Tenant-ID": "t1"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["tenantId"] == "t1"
+    assert data["evaluatedHectares"] > 0
+    assert data["soilEntities"] == 1
+
+
+def test_tenant_quota_no_entities(client, mock_orion):
+    mock_orion.query_entities.return_value = []
+    resp = client.get("/v1/soil/tenant/quota", headers={"X-Tenant-ID": "t1"})
+    assert resp.status_code == 200
+    data = resp.json()
     assert data["evaluatedHectares"] == 0
+    assert data["soilEntities"] == 0

@@ -62,7 +62,7 @@ export function ProviderHealthPanel() {
 
   if (loading) {
     return (
-      <SlotShell title={t('health.title')}>
+      <SlotShell moduleId="soil" title={t('health.title')}>
         <p className="text-nkz-xs text-nkz-muted">Loading...</p>
       </SlotShell>
     );
@@ -70,14 +70,14 @@ export function ProviderHealthPanel() {
 
   if (metrics.length === 0) {
     return (
-      <SlotShell title={t('health.title')}>
+      <SlotShell moduleId="soil" title={t('health.title')}>
         <p className="text-nkz-xs text-nkz-muted">{t('dashboardPlaceholder')}</p>
       </SlotShell>
     );
   }
 
   return (
-    <SlotShell title={t('health.title')}>
+    <SlotShell moduleId="soil" title={t('health.title')}>
       <div className="space-y-3">
         <div className="overflow-x-auto">
           <table className="w-full text-nkz-xs">

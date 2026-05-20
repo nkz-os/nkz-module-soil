@@ -5,6 +5,13 @@ from typing import Any
 
 import httpx
 
+try:
+    import rasterio
+    from rasterio.windows import Window
+    _HAS_RASTERIO = True
+except ImportError:
+    _HAS_RASTERIO = False
+
 from nkz_soil.models.domain import (
     SoilProperty,
     DepthInterval,
@@ -117,10 +124,7 @@ class SoilGridsProvider:
         properties: list[SoilProperty],
         depths: list[DepthInterval],
     ) -> SoilDataResult:
-        try:
-            import rasterio
-            from rasterio.windows import Window
-        except ImportError:
+        if not _HAS_RASTERIO:
             logger.warning("rasterio not available, falling back to REST API")
             return await self._fetch_rest(lon, lat, geometry, properties, depths)
 
@@ -142,7 +146,7 @@ class SoilGridsProvider:
                     value = await asyncio.to_thread(
                         self._read_cog_pixel, rasterio, cog_url, lon, lat
                     )
-                    if value is not None and value != -9999:
+                    if value is not None and value not in (-9999, -3276.8, -3.40282347e+38):
                         factor = UNIT_FACTORS.get(webdav_name, 1.0)
                         horizon_data[self._map_layer_name(webdav_name)] = round(value / factor, 2)
                 except Exception as e:

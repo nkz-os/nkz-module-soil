@@ -128,8 +128,35 @@ async def point_query(
 @router.get("/tenant/quota")
 @limiter.exempt
 async def tenant_quota(tenant_id: str = Depends(get_tenant_id)):
+    """Calculate evaluated hectares from AgriSoil entities in Orion-LD."""
+    from shapely.geometry import shape
+    from shapely.ops import transform
+    import pyproj
+
+    async with OrionClient(tenant_id) as orion:
+        entities = await orion.query_entities(type="AgriSoil")
+
+    total_area_m2 = 0.0
+    for entity in entities:
+        geometry = entity.get("location", {}).get("value")
+        if not geometry:
+            continue
+        try:
+            geom = shape(geometry)
+            # Transform to area-preserving projection for accurate calculation
+            geom_proj = transform(
+                pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True).transform,
+                geom,
+            )
+            total_area_m2 += geom_proj.area
+        except Exception:
+            continue
+
+    evaluated_ha = round(total_area_m2 / 10_000, 2)
+
     return {
         "tenantId": tenant_id,
-        "evaluatedHectares": 0,
-        "contractedHectares": 0,
+        "evaluatedHectares": evaluated_ha,
+        "contractedHectares": 0,  # TODO: configurable per tenant
+        "soilEntities": len(entities),
     }

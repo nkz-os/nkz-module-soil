@@ -1,6 +1,8 @@
+import csv
+import io
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from nkz_soil.api.dependencies import get_tenant_id
@@ -105,24 +107,21 @@ async def create_survey(body: SurveyInput, tenant_id: str = Depends(get_tenant_i
         )
 
     entity_id = f"urn:ngsi-ld:SoilSurvey:{uuid.uuid4()}"
-    entity = {
+    entity: dict = {
         "id": entity_id,
         "type": "SoilSurvey",
         "@context": [CONTEXT_URL],
         "surveyType": {"type": "Property", "value": body.survey_type},
-        "refAgriParcel": (
-            {
-                "type": "Relationship",
-                "object": f"urn:ngsi-ld:AgriParcel:{body.parcel_id}",
-            }
-            if body.parcel_id
-            else None
-        ),
         "startDate": {"type": "Property", "value": None},
         "instrumentation": {"type": "Property", "value": body.instrumentation},
         "pointCount": {"type": "Property", "value": 0},
         "tenant": {"type": "Property", "value": tenant_id},
     }
+    if body.parcel_id:
+        entity["refAgriParcel"] = {
+            "type": "Relationship",
+            "object": f"urn:ngsi-ld:AgriParcel:{body.parcel_id}",
+        }
 
     async with OrionClient(tenant_id) as orion:
         await orion.create_entity(entity)
@@ -141,3 +140,213 @@ async def force_ingest(
     await redis.enqueue_job("ingest_parcel", parcel_id, tenant_id, {}, "v1")
 
     return {"status": "accepted", "parcelId": parcel_id}
+
+
+# CSV column mapping: accepts both snake_case and camelCase
+_CSV_COLUMNS = [
+    "lat", "lon", "depthFrom", "depthTo",
+    "sand", "silt", "clay", "organicCarbon", "ph",
+    "cec", "bulkDensity", "coarseFragments", "penetrationResistance",
+    "labReference", "samplingDate", "operator",
+]
+
+# Aliases for common variations
+_CSV_ALIASES = {
+    "depth_from": "depthFrom", "depth_to": "depthTo",
+    "organic_carbon": "organicCarbon", "bulk_density": "bulkDensity",
+    "coarse_fragments": "coarseFragments", "penetration_resistance": "penetrationResistance",
+    "lab_reference": "labReference", "sampling_date": "samplingDate",
+}
+
+
+def _normalize_csv_headers(headers: list[str]) -> dict[str, str]:
+    """Map CSV headers to canonical field names."""
+    mapping = {}
+    for h in headers:
+        canonical = _CSV_ALIASES.get(h.strip(), h.strip())
+        if canonical in _CSV_COLUMNS:
+            mapping[h.strip()] = canonical
+    return mapping
+
+
+def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
+    """Validate a single CSV row. Returns (cleaned_row, error)."""
+    errors = []
+
+    try:
+        lat = float(row.get("lat", ""))
+        lon = float(row.get("lon", ""))
+    except (ValueError, TypeError):
+        return None, f"Row {row_num}: invalid lat/lon"
+
+    if not (-90 <= lat <= 90):
+        errors.append("lat must be -90..90")
+    if not (-180 <= lon <= 180):
+        errors.append("lon must be -180..180")
+
+    try:
+        depth_from = int(row.get("depthFrom", ""))
+        depth_to = int(row.get("depthTo", ""))
+    except (ValueError, TypeError):
+        return None, f"Row {row_num}: invalid depthFrom/depthTo"
+
+    if depth_from < 0 or depth_to <= depth_from:
+        errors.append("depthFrom must be >= 0 and < depthTo")
+
+    # Texture validation
+    sand = silt = clay = None
+    for field, var in [("sand", "sand"), ("silt", "silt"), ("clay", "clay")]:
+        val = row.get(field, "")
+        if val:
+            try:
+                v = float(val)
+                if field == "sand":
+                    sand = v
+                elif field == "silt":
+                    silt = v
+                else:
+                    clay = v
+            except ValueError:
+                errors.append(f"invalid {field}")
+
+    if sand is not None and silt is not None and clay is not None:
+        total = sand + silt + clay
+        if total < 97 or total > 103:
+            errors.append(f"sand+silt+clay must be ~100%, got {total:.1f}")
+
+    # pH validation
+    ph_val = row.get("ph", "")
+    if ph_val:
+        try:
+            ph = float(ph_val)
+            if ph < 0 or ph > 14:
+                errors.append("pH must be 0-14")
+        except ValueError:
+            errors.append("invalid ph")
+
+    # Bulk density validation
+    bd_val = row.get("bulkDensity", "")
+    if bd_val:
+        try:
+            bd = float(bd_val)
+            if bd < 0.1 or bd > 2.65:
+                errors.append("bulkDensity must be 0.1-2.65")
+        except ValueError:
+            errors.append("invalid bulkDensity")
+
+    if errors:
+        return None, f"Row {row_num}: {'; '.join(errors)}"
+
+    cleaned = {
+        "lat": lat,
+        "lon": lon,
+        "depth_from": depth_from,
+        "depth_to": depth_to,
+    }
+    for field, key in [
+        ("sand", "sand"), ("silt", "silt"), ("clay", "clay"),
+        ("organicCarbon", "organic_carbon"), ("ph", "ph"),
+        ("cec", "cec"), ("bulkDensity", "bulk_density"),
+        ("coarseFragments", "coarse_fragments"),
+        ("penetrationResistance", "penetration_resistance"),
+    ]:
+        val = row.get(field, "")
+        if val:
+            try:
+                cleaned[key] = float(val)
+            except ValueError:
+                pass
+
+    cleaned["laboratory_reference"] = row.get("labReference", "") or None
+    cleaned["sampling_date"] = row.get("samplingDate", "") or None
+    cleaned["operator"] = row.get("operator", "") or None
+
+    return cleaned, None
+
+
+@router.post("/sampling-points/batch")
+async def create_sampling_points_batch(
+    file: UploadFile = File(...),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Upload CSV file with multiple soil sampling points.
+
+    CSV columns: lat, lon, depthFrom, depthTo, sand, silt, clay,
+    organicCarbon, ph, cec, bulkDensity, coarseFragments,
+    penetrationResistance, labReference, samplingDate, operator.
+    """
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=422, detail="File must be a CSV")
+
+    content = await file.read()
+    text = content.decode("utf-8-sig")  # handle BOM
+
+    reader = csv.DictReader(io.StringIO(text))
+    if reader.fieldnames is None:
+        raise HTTPException(status_code=422, detail="Empty CSV or missing headers")
+
+    header_map = _normalize_csv_headers(reader.fieldnames)
+    if "lat" not in header_map.values() or "lon" not in header_map.values():
+        raise HTTPException(
+            status_code=422,
+            detail="CSV must include 'lat' and 'lon' columns",
+        )
+
+    created = []
+    errors = []
+
+    for row_num, raw_row in enumerate(reader, start=2):  # row 1 is header
+        # Normalize headers
+        row = {header_map.get(k, k): v for k, v in raw_row.items() if v.strip()}
+
+        cleaned, error = _validate_row(row, row_num)
+        if error:
+            errors.append({"row": row_num, "error": error})
+            continue
+
+        entity_id = f"urn:ngsi-ld:SoilSamplingPoint:{uuid.uuid4()}"
+        entity = {
+            "id": entity_id,
+            "type": "SoilSamplingPoint",
+            "@context": [CONTEXT_URL],
+            "location": {
+                "type": "GeoProperty",
+                "value": {"type": "Point", "coordinates": [cleaned["lon"], cleaned["lat"]]},
+            },
+            "samplingDate": {"type": "Property", "value": cleaned["sampling_date"]},
+            "laboratoryReference": {
+                "type": "Property",
+                "value": cleaned["laboratory_reference"],
+            },
+            "horizons": {
+                "type": "Property",
+                "value": [
+                    {
+                        "depthFrom": cleaned["depth_from"],
+                        "depthTo": cleaned["depth_to"],
+                        "sand": cleaned.get("sand"),
+                        "silt": cleaned.get("silt"),
+                        "clay": cleaned.get("clay"),
+                        "organicCarbon": cleaned.get("organic_carbon"),
+                        "bulkDensity": cleaned.get("bulk_density"),
+                        "ph": cleaned.get("ph"),
+                        "cec": cleaned.get("cec"),
+                        "coarseFragments": cleaned.get("coarse_fragments"),
+                        "penetrationResistance": cleaned.get("penetration_resistance"),
+                    }
+                ],
+            },
+            "operator": {"type": "Property", "value": cleaned["operator"]},
+        }
+
+        async with OrionClient(tenant_id) as orion:
+            await orion.create_entity(entity)
+
+        created.append({"id": entity_id, "row": row_num})
+
+    return {
+        "created": len(created),
+        "errors": len(errors),
+        "details": created,
+        "errorDetails": errors,
+    }

@@ -262,7 +262,63 @@ def _aggregate_uncertainty(results: list) -> float:
 
 
 async def reap_stuck_jobs(ctx: dict) -> None:
-    pass
+    """Detect and clean up stuck ARQ jobs.
+
+    Scans Redis ARQ state keys for jobs that have been in 'running' or
+    'pending' state for longer than the timeout threshold. Marks them as
+    failed so they don't block the queue indefinitely.
+    """
+    import logging
+    from arq.connections import ArqRedis
+
+    logger = logging.getLogger(__name__)
+    timeout_seconds = 1800  # 30 minutes
+
+    redis: ArqRedis = ctx.get("redis")  # type: ignore[assignment]
+    if redis is None:
+        redis = ArqRedis.from_url(REDIS_URL)
+
+    try:
+        # ARQ stores job state in Redis hashes keyed by 'arq:job:{job_id}'.
+        # We scan for all keys matching this pattern and check their status.
+        cursor = 0
+        now = time.monotonic()
+        reaped = 0
+
+        while True:
+            cursor, keys = await redis.scan(
+                cursor=cursor, match="arq:job:*", count=100
+            )
+            for key in keys:
+                job_data = await redis.hgetall(key)
+                if not job_data:
+                    continue
+
+                job_id = key.split(":")[-1]
+                status = job_data.get("status", "")
+                enqueue_time = float(job_data.get("enqueue_time", 0))
+
+                # Check if job has been running/pending too long
+                age = now - enqueue_time
+                if status in ("running", "pending") and age > timeout_seconds:
+                    logger.warning(
+                        "Reaping stuck job %s (status=%s, age=%.0fs)",
+                        job_id, status, age,
+                    )
+                    await redis.hset(key, mapping={"status": "failed", "error": "stuck_job_timeout"})
+                    reaped += 1
+
+            if cursor == 0:
+                break
+
+        if reaped > 0:
+            logger.info("Reaped %d stuck jobs", reaped)
+
+    except Exception:
+        logger.exception("Error in reap_stuck_jobs")
+    finally:
+        if ctx.get("redis") is None:
+            await redis.close()
 
 
 def _parse_redis_url(url: str) -> RedisSettings:

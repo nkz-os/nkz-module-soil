@@ -8,8 +8,8 @@ venv/
 *.egg-info/
 dist/
 build/
-frontend/node_modules/
-frontend/dist/
+node_modules/
+dist/
 internal-docs/
 .opencode/
 *.env

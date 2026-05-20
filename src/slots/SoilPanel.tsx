@@ -12,13 +12,15 @@ export function SoilPanel({ entityId }: { entityId?: string }) {
 
   useEffect(() => {
     if (entityId) {
-      api.getSummary(entityId).then(setSummary).catch(() => setSummary(null));
+      api.getSummary(entityId)
+        .then((data: unknown) => setSummary(data as Record<string, unknown> | null))
+        .catch(() => setSummary(null));
     }
   }, [entityId, api]);
 
   if (!summary) {
     return (
-      <SlotShell title={t('title')}>
+      <SlotShell moduleId="soil" title={t('title')}>
         <p className="text-nkz-muted text-nkz-xs">{t('summary')}</p>
       </SlotShell>
     );
@@ -31,7 +33,7 @@ export function SoilPanel({ entityId }: { entityId?: string }) {
   ) || horizons[0];
 
   return (
-    <SlotShell title={t('title')}>
+    <SlotShell moduleId="soil" title={t('title')}>
       <div className="space-y-3">
         <div className="text-nkz-xs text-nkz-muted">
           {t('source')}: {String(summary.dataSource || '')}
@@ -62,7 +64,7 @@ export function SoilPanel({ entityId }: { entityId?: string }) {
                   : '\u2014'}
               </span>
             </div>
-            {horizon.hydrologicGroup && (
+            {horizon.hydrologicGroup != null && (
               <div className="flex justify-between">
                 <span>{t('hydrologicGroup')}:</span>
                 <span className="font-medium">{String(horizon.hydrologicGroup)}</span>
@@ -71,15 +73,15 @@ export function SoilPanel({ entityId }: { entityId?: string }) {
             {horizon.ksatSaturated != null && (
               <div className="flex justify-between">
                 <span>{t('ksat')}:</span>
-                <span className="font-medium">{horizon.ksatSaturated} mm/h</span>
+                <span className="font-medium">{String(horizon.ksatSaturated)} mm/h</span>
               </div>
             )}
             {(summary.relativeCompaction as Array<Record<string, unknown>> | null)?.[0] && (
               <div className="flex justify-between">
                 <span>{t('compaction')}:</span>
                 <span className="font-medium">
-                  {(summary.relativeCompaction as Array<Record<string, unknown>>)[0].classification}{' '}
-                  ({(summary.relativeCompaction as Array<Record<string, unknown>>)[0].value}%)
+                  {String((summary.relativeCompaction as Array<Record<string, unknown>>)[0].classification)}{' '}
+                  ({String((summary.relativeCompaction as Array<Record<string, unknown>>)[0].value)}%)
                 </span>
               </div>
             )}
