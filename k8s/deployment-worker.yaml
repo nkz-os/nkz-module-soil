@@ -23,8 +23,13 @@ spec:
             - secretRef:
                 name: soil-module-secret
           env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: password
             - name: REDIS_URL
-              value: "redis://:redis123@redis-service:6379/0"
+              value: "redis://:$(REDIS_PASSWORD)@redis-service:6379/0"
             - name: ORION_BASE_URL
               value: "http://orion-ld-service:1026"
             - name: MINIO_ENDPOINT
