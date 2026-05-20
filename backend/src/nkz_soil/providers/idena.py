@@ -142,10 +142,10 @@ class IdenaProvider:
 
         props = features[0].get("properties", {})
 
-        serie = self._extract_field(props, ["SERIE1", "SERIE2", "SERIE3"])
+        self._extract_field(props, ["SERIE1", "SERIE2", "SERIE3"])
         geomorf = self._extract_field(props, ["GEOMORF1", "GEOMORF2", "GEOMORF3"])
         soil_taxon = self._extract_field(props, ["SOILTAXON1", "SOILTAXON2", "SOILTAXON3"])
-        clasif_sc = self._extract_field(props, ["CLASIF_SC1", "CLASIF_SC2", "CLASIF_SC3"])
+        self._extract_field(props, ["CLASIF_SC1", "CLASIF_SC2", "CLASIF_SC3"])
 
         texture_class = self._infer_texture_from_geomorf(geomorf)
         sand_val = TEXTURE_CLASS_TO_SAND.get(texture_class.lower() if texture_class else "")

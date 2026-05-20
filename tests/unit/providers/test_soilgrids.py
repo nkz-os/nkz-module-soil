@@ -4,7 +4,7 @@ from httpx import Response
 from datetime import timedelta
 from unittest.mock import patch
 from nkz_soil.providers.soilgrids import SoilGridsProvider
-from nkz_soil.models.domain import SoilProperty, DepthInterval, GeographicScope
+from nkz_soil.models.domain import SoilProperty, DepthInterval
 
 
 @pytest.fixture

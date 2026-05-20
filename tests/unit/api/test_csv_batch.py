@@ -1,6 +1,5 @@
 """Tests for the CSV batch upload endpoint."""
 
-import io
 import pytest
 from unittest.mock import AsyncMock, patch
 

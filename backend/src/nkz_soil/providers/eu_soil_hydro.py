@@ -1,5 +1,4 @@
 from datetime import timedelta, datetime
-from typing import Any
 
 import httpx
 
@@ -9,7 +8,6 @@ from nkz_soil.models.domain import (
     SoilDataResult,
     ProviderHealth,
     GeographicScope,
-    Horizon,
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
 

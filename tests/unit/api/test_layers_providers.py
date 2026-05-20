@@ -1,10 +1,8 @@
 import pytest
-from unittest.mock import patch, MagicMock
 
 from fastapi.testclient import TestClient
 
 from nkz_soil.api.main import create_app
-from nkz_soil.providers.base import ProviderRegistry
 
 
 @pytest.fixture
@@ -20,7 +18,7 @@ def test_layers_manifest(client):
     data = resp.json()
     assert "layers" in data
     assert len(data["layers"]) == 6
-    layer_ids = [l["id"] for l in data["layers"]]
+    layer_ids = [layer["id"] for layer in data["layers"]]
     assert "soil-hydrologic-group" in layer_ids
     assert "soil-ksat" in layer_ids
     assert "soil-compaction" in layer_ids

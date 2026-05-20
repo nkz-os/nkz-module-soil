@@ -1,4 +1,3 @@
-import pytest
 from datetime import timedelta
 
 from nkz_soil.providers.base import (

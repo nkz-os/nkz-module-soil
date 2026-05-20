@@ -1,10 +1,8 @@
-import pytest
 from nkz_soil.providers.cache import (
     _compute_cache_key,
     _get_ttl,
     _serialize_result,
     _deserialize_result,
-    ProviderCache,
 )
 from nkz_soil.models.domain import SoilProperty, DepthInterval, SoilDataResult, Horizon
 

@@ -1,4 +1,3 @@
-import pytest
 from nkz_soil.api.routes.subscriptions import (
     _compute_parcel_hash,
     _expand_geometry,

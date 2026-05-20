@@ -60,8 +60,8 @@ def _expand_geometry(geometry: dict, buffer_m: float) -> dict:
         }
     if geometry.get("type") == "Polygon":
         coords = geometry["coordinates"][0]
-        centroid_lon = sum(c[0] for c in coords) / len(coords)
-        centroid_lat = sum(c[1] for c in coords) / len(coords)
+        sum(c[0] for c in coords) / len(coords)
+        sum(c[1] for c in coords) / len(coords)
         deg = buffer_m / 111320.0
         min_lon = min(c[0] for c in coords) - deg
         max_lon = max(c[0] for c in coords) + deg
@@ -87,7 +87,7 @@ def _expand_geometry(geometry: dict, buffer_m: float) -> dict:
 async def orion_webhook(request: Request):
     body = await request.json()
 
-    notification_id = body.get("id", "")
+    body.get("id", "")
     entity_type = body.get("type", "")
     subscription_id = body.get("subscriptionId", "")
     data = body.get("data", [])
