@@ -36,6 +36,11 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libgeos-dev libproj-dev
 
+      - name: Install nkz-platform-sdk from source
+        run: |
+          git clone --depth 1 https://github.com/nkz-os/nkz.git /tmp/nkz-platform-sdk-src
+          pip install -e /tmp/nkz-platform-sdk-src/services/nkz-platform-sdk
+
       - name: Install backend dependencies
         run: pip install -e ".[dev,geo]"
 
