@@ -25,7 +25,7 @@ interface SoilSummary {
   }>;
 }
 
-interface LayerInfo {
+export interface LayerInfo {
   id: string;
   label: string;
   category: string;
