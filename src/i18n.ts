@@ -1,3 +1,5 @@
+import { i18n as sdkI18n } from '@nekazari/sdk';
+
 export const i18n = {
   es: {
     soil: {
@@ -452,3 +454,15 @@ export const i18n = {
     },
   },
 };
+
+function register(): void {
+  const add = sdkI18n && 'addResourceBundle' in sdkI18n ? sdkI18n.addResourceBundle : undefined;
+  if (typeof add !== 'function') return;
+  for (const [lang, resources] of Object.entries(i18n)) {
+    for (const [ns, translations] of Object.entries(resources)) {
+      add.call(sdkI18n, lang, ns, translations, true, true);
+    }
+  }
+}
+
+register();
