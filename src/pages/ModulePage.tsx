@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SlotShellCompact } from '@nekazari/viewer-kit';
-import { useSoilApi } from '../hooks/useSoilApi';
+import { useSearchParams } from 'react-router-dom';
+import { useSoilApi, LayerInfo } from '../hooks/useSoilApi';
 import { useEntities } from '@nekazari/module-kit';
 
 type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
@@ -113,6 +114,13 @@ function getTextureClass(sand: number, silt: number, clay: number): string {
 export default function ModulePage() {
   const { t } = useTranslation('soil');
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('parcel')) {
+      setActiveTab('dashboard');
+    }
+  }, [searchParams]);
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'dashboard', label: t('tabs.dashboard') },
@@ -160,6 +168,20 @@ function DashboardTab() {
   const { data: soils, isLoading: soilsLoading } = useEntities<AgriSoilEntity>('AgriSoil');
   const [selectedParcel, setSelectedParcel] = useState<string | null>(null);
   const [summary, setSummary] = useState<AgriSoilEntity | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const parcelQuery = searchParams.get('parcel');
+    if (parcelQuery && parcelQuery !== selectedParcel) {
+      setSelectedParcel(parcelQuery);
+    }
+  }, [searchParams, selectedParcel]);
+
+  const handleSelectParcel = (id: string) => {
+    setSelectedParcel(id);
+    setSearchParams(prev => { prev.set('parcel', id); return prev; }, { replace: true });
+  };
 
   // Fetch summary when parcel selected
   useEffect(() => {
@@ -167,6 +189,17 @@ function DashboardTab() {
       api.getSummary(selectedParcel).then((data: unknown) => setSummary(data as AgriSoilEntity)).catch(() => setSummary(null));
     }
   }, [selectedParcel, api]);
+
+  const filteredSoils = React.useMemo(() => {
+    if (!soils) return [];
+    if (!searchTerm) return soils;
+    const lower = searchTerm.toLowerCase();
+    return soils.filter(s => {
+      const parcelId = s.refAgriParcel?.object?.split(':').pop() || s.id;
+      const dataSource = s.dataSource?.value || '';
+      return parcelId.toLowerCase().includes(lower) || String(dataSource).toLowerCase().includes(lower);
+    });
+  }, [soils, searchTerm]);
 
   if (soilsLoading) {
     return (
@@ -180,10 +213,19 @@ function DashboardTab() {
     <div className="space-y-6">
       {/* Parcel selector */}
       <div className="bg-nkz-surface rounded-nkz-md p-6">
-        <h2 className="text-nkz-lg font-medium mb-4">{t('dashboard.parcels')}</h2>
-        {soils && soils.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {soils.map((soil) => {
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
+          <h2 className="text-nkz-lg font-medium">{t('dashboard.parcels')}</h2>
+          <input
+            type="search"
+            placeholder={t('search', 'Search parcels...')}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="px-3 py-1.5 text-nkz-sm rounded-nkz-sm border border-nkz-border bg-transparent min-w-[200px]"
+          />
+        </div>
+        {filteredSoils && filteredSoils.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto pr-2">
+            {filteredSoils.map((soil) => {
               const parcelRef = soil.refAgriParcel;
               const parcelId = parcelRef?.object?.split(':').pop() || soil.id;
               const dataSource = soil.dataSource?.value;
@@ -194,7 +236,7 @@ function DashboardTab() {
               return (
                 <button
                   key={soil.id}
-                  onClick={() => setSelectedParcel(soil.id)}
+                  onClick={() => handleSelectParcel(soil.id)}
                   className={`text-left p-4 rounded-nkz-md border transition-colors ${
                     selectedParcel === soil.id
                       ? 'border-nkz-primary bg-nkz-primary/5'
@@ -297,6 +339,9 @@ function DashboardTab() {
             </div>
           )}
 
+          {/* Raster Viewer */}
+          <RasterViewer parcelId={selectedParcel} />
+
           {/* Attribution */}
           <div className="mt-4 pt-4 border-t border-nkz-border text-nkz-xs text-nkz-muted">
             {t('source')}: {summary.dataSource?.value || '—'}
@@ -320,6 +365,69 @@ function compactionColor(classification: string): string {
     case 'severe': return 'text-nkz-danger';
     default: return 'text-nkz-muted';
   }
+}
+
+// ─── Raster Viewer Component ─────────────────────────────────────────────
+
+function RasterViewer({ parcelId }: { parcelId: string }) {
+  const { t } = useTranslation('soil');
+  const api = useSoilApi();
+  const [manifest, setManifest] = useState<LayerInfo[] | null>(null);
+  const [selectedLayer, setSelectedLayer] = useState<string>('');
+  const [rasterUrl, setRasterUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.getLayerManifest().then((data) => {
+      if (data.layers && data.layers.length > 0) {
+        setManifest(data.layers);
+        setSelectedLayer(data.layers[0].id);
+      }
+    }).catch(console.error);
+  }, [api]);
+
+  useEffect(() => {
+    if (parcelId && selectedLayer) {
+      setLoading(true);
+      const property = selectedLayer.replace('soil-', '');
+      api.getRaster(parcelId, property)
+        .then((data) => setRasterUrl(data.url))
+        .catch(() => setRasterUrl(null))
+        .finally(() => setLoading(false));
+    } else {
+      setRasterUrl(null);
+    }
+  }, [parcelId, selectedLayer, api]);
+
+  if (!manifest || manifest.length === 0) return null;
+
+  return (
+    <div className="mt-6 pt-6 border-t border-nkz-border">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-nkz-sm font-medium">{t('dashboard.rasterMap', 'Raster Map')}</h3>
+        <select
+          value={selectedLayer}
+          onChange={(e) => setSelectedLayer(e.target.value)}
+          className="text-nkz-xs border-nkz-border rounded-nkz-sm p-1 bg-transparent"
+        >
+          {manifest.map((layer) => (
+            <option key={layer.id} value={layer.id}>
+              {layer.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="bg-nkz-muted/5 rounded-nkz-md aspect-video flex items-center justify-center overflow-hidden border border-nkz-border relative">
+        {loading ? (
+          <span className="text-nkz-xs text-nkz-muted">{t('loading')}</span>
+        ) : rasterUrl ? (
+          <img src={rasterUrl} alt="Soil raster" className="w-full h-full object-cover" />
+        ) : (
+          <span className="text-nkz-xs text-nkz-muted">{t('dashboard.noRaster', 'No raster available for this property')}</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Manual Sampling Tab ─────────────────────────────────────────────────
