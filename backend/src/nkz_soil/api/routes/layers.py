@@ -143,7 +143,7 @@ async def render_layer(
 
     # Collect sample points from all AgriSoil entities
     async with OrionClient(tenant_id) as orion:
-        soils = await orion.query_entities(type="AgriSoil")
+        soils = await orion.query_entities(type="AgriSoilExtended")
 
     sample_points = []
     for soil in soils:

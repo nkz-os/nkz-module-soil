@@ -11,7 +11,7 @@ router = APIRouter()
 @limiter.exempt
 async def parcel_summary(parcel_id: str, tenant_id: str = Depends(get_tenant_id)):
     async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="AgriSoil")
+        entities = await orion.query_entities(type="AgriSoilExtended")
         matching = [
             e
             for e in entities
@@ -31,7 +31,7 @@ async def parcel_horizons(
 ):
     depth_from, depth_to = map(int, depth.split("-"))
     async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="AgriSoil")
+        entities = await orion.query_entities(type="AgriSoilExtended")
         matching = [
             e
             for e in entities
@@ -87,7 +87,7 @@ async def parcel_hydrologic_group(
     parcel_id: str, tenant_id: str = Depends(get_tenant_id)
 ):
     async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="AgriSoil")
+        entities = await orion.query_entities(type="AgriSoilExtended")
         matching = [
             e
             for e in entities
@@ -110,7 +110,7 @@ async def point_query(
     depth_from, depth_to = map(int, depth.split("-"))
     geometry = {"type": "Point", "coordinates": [lon, lat]}
     async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="AgriSoil", geometry=geometry)
+        entities = await orion.query_entities(type="AgriSoilExtended", geometry=geometry)
         if not entities:
             raise HTTPException(status_code=404, detail="No soil data at this point")
         horizons = entities[0].get("horizons", {}).get("value", [])
@@ -134,7 +134,7 @@ async def tenant_quota(tenant_id: str = Depends(get_tenant_id)):
     import pyproj
 
     async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="AgriSoil")
+        entities = await orion.query_entities(type="AgriSoilExtended")
 
     total_area_m2 = 0.0
     for entity in entities:

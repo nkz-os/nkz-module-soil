@@ -1,35 +1,32 @@
 import pytest
-from nkz_soil.models.ngsi_ld import AgriSoil
+from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty, CONTEXT_URLS
 
 
-@pytest.mark.skip(reason="awaits T20 model migration — old AgriSoil pydantic shape removed")
 def test_agri_soil_valid():
-    entity = AgriSoil(
-        id="urn:ngsi-ld:AgriSoil:test-1",
-        location={"type": "GeoProperty", "value": {"type": "Polygon", "coordinates": [[[0,0],[1,0],[1,1],[0,0]]]}},
-        refAgriParcel={"type": "Relationship", "object": "urn:ngsi-ld:AgriParcel:parcel-1"},
-        parcelVersionId={"type": "Property", "value": "v1"},
-        horizons={"type": "Property", "value": [
-            {"depthFrom": 0, "depthTo": 30, "sand": 45, "silt": 35, "clay": 20}
-        ]},
-        dataSource={"type": "Property", "value": "soilgrids"},
-        uncertainty={"type": "Property", "value": 0.15},
-        lastUpdated={"type": "Property", "value": "2026-05-11T00:00:00Z"},
+    entity = AgriSoilExtended(
+        id="urn:ngsi-ld:AgriSoilExtended:test-1",
+        location=GeoProperty(value={"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}),
+        refAgriParcel=Relationship(object="urn:ngsi-ld:AgriParcel:parcel-1"),
+        horizons=TaggedProperty(
+            value=[{"depthFrom": 0, "depthTo": 30, "sand": 45, "silt": 35, "clay": 20}],
+            provided_by="LUCAS-2018",
+            license_id="JRC-LUCAS-2018",
+        ),
+        parcelVersionId=TaggedProperty(value="v1"),
     )
-    assert entity.type == "AgriSoil"
-    assert entity.dataSource.value == "soilgrids"
+    out = entity.to_ngsi()
+    assert out["type"] == "AgriSoilExtended"
+    assert out["horizons"]["providedBy"]["value"] == "LUCAS-2018"
+    assert out["horizons"]["license"]["value"] == "JRC-LUCAS-2018"
+    assert out["parcelVersionId"]["value"] == "v1"
 
 
-@pytest.mark.skip(reason="awaits T20 model migration — old AgriSoil pydantic shape removed")
 def test_agri_soil_context():
-    entity = AgriSoil(
-        id="urn:ngsi-ld:AgriSoil:test-1",
-        location={"type": "GeoProperty", "value": {"type": "Polygon", "coordinates": [[[0,0],[1,0],[1,1],[0,0]]]}},
-        refAgriParcel={"type": "Relationship", "object": "urn:ngsi-ld:AgriParcel:parcel-1"},
-        parcelVersionId={"type": "Property", "value": "v1"},
-        horizons={"type": "Property", "value": []},
-        dataSource={"type": "Property", "value": "soilgrids"},
-        uncertainty={"type": "Property", "value": 0.15},
-        lastUpdated={"type": "Property", "value": "2026-05-11T00:00:00Z"},
+    entity = AgriSoilExtended(
+        id="urn:ngsi-ld:AgriSoilExtended:test-1",
+        location=GeoProperty(value={"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}),
+        refAgriParcel=Relationship(object="urn:ngsi-ld:AgriParcel:parcel-1"),
+        horizons=TaggedProperty(value=[]),
     )
-    assert len(entity.context) == 1
+    assert len(entity.context) == 2
+    assert entity.context == CONTEXT_URLS
