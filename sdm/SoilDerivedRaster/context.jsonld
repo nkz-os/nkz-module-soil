@@ -1,0 +1,7 @@
+{
+  "@context": {
+    "SoilDerivedRaster": "https://nkz-os.org/sdm-proposals/SoilDerivedRaster",
+    "soilProperty": "https://nkz-os.org/sdm-proposals/SoilDerivedRaster#soilProperty",
+    "storageUri": "https://nkz-os.org/sdm-proposals/SoilDerivedRaster#storageUri"
+  }
+}
