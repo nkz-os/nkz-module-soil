@@ -17,6 +17,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "python-multipart>=0.0.9",
     "asyncpg>=0.29",
+    "pandas>=2.2",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +28,7 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
     "jsonschema[format]>=4.21",
+    "testcontainers[postgres]>=4.0",
 ]
 geo = [
     "rasterio>=1.4",
