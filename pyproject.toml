@@ -25,6 +25,7 @@ dev = [
     "respx>=0.21",
     "ruff>=0.8",
     "mypy>=1.13",
+    "jsonschema[format]>=4.21",
 ]
 geo = [
     "rasterio>=1.4",
