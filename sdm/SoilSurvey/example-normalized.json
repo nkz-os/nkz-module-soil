@@ -1,0 +1,12 @@
+{
+  "id": "urn:ngsi-ld:SoilSurvey:campaign-2026-spring",
+  "type": "SoilSurvey",
+  "surveyType": {"type": "Property", "value": "lab-grid"},
+  "refAgriParcel": {"type": "Relationship", "object": "urn:ngsi-ld:AgriParcel:parcel-123"},
+  "startDate": {"type": "Property", "value": {"@type": "DateTime", "@value": "2026-04-10T00:00:00Z"}},
+  "endDate": {"type": "Property", "value": {"@type": "DateTime", "@value": "2026-04-20T00:00:00Z"}},
+  "instrumentation": {"type": "Property", "value": ["soil auger", "GPS RTK"]},
+  "pointCount": {"type": "Property", "value": 24},
+  "tenant": {"type": "Property", "value": "tenant-acme"},
+  "@context": ["https://nkz-os.org/jsonld-contexts/v1/nkz-context.jsonld"]
+}
