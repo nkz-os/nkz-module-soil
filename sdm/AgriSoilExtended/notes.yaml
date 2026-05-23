@@ -1,0 +1,29 @@
+# AgriSoilExtended (SDM-001)
+purpose: |
+  Extension of FIWARE AgriSoil to support precision-agriculture soil characterization
+  with multi-horizon profiles, particle-size distribution, organic carbon, bulk density,
+  hydraulic properties, and full per-attribute provenance metadata.
+
+upstream_alignment:
+  base: AgriSoil (SmartAgriFood)
+  relationship: extension
+  rationale: |
+    Official AgriSoil exposes only 5 attributes (description, location, alternateName,
+    agroVocConcept, seeAlso). Real precision-agriculture systems require depth-resolved
+    profiles with hydraulic properties for irrigation, drainage, and crop modeling.
+
+attribute_provenance:
+  per_attribute_subproperties:
+    - providedBy
+    - license
+    - confidenceInterval
+    - derivedBy
+    - observedAt
+
+units:
+  reference: UN/CEFACT
+  examples:
+    bulkDensity: GL3 (g/cm³)
+    saturatedHydraulicConductivity: F61 (cm/h)
+    organicCarbon: P1 (% mass)
+    availableWaterCapacity: H51 (cm³/cm³)
