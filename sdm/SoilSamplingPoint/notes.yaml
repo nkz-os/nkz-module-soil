@@ -1,0 +1,11 @@
+purpose: |
+  Models a single soil sampling point — lab or field — with depth-resolved analytical results
+  and traceability to a parent SoilSurvey campaign.
+upstream_alignment:
+  base: none (new entity)
+  rationale: |
+    No SDM entity currently represents an individual sampling point with analytical-result
+    payloads. SoilSamplingPoint complements AgriSoilExtended (aggregated profile) by capturing
+    the raw measurements that fed it.
+units:
+  reference: UN/CEFACT

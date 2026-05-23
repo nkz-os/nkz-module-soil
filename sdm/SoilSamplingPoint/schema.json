@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nkz-os.org/sdm-proposals/SoilSamplingPoint/schema.json",
+  "title": "SoilSamplingPoint (SDM-002)",
+  "description": "Lab/field soil sampling point with depth-resolved analytical results.",
+  "type": "object",
+  "allOf": [
+    {"$ref": "https://smart-data-models.github.io/data-models/common-schema.json#/definitions/GSMA-Commons"},
+    {"$ref": "https://smart-data-models.github.io/data-models/common-schema.json#/definitions/Location-Commons"},
+    {
+      "properties": {
+        "type": {"type": "string", "enum": ["SoilSamplingPoint"]},
+        "samplingDate": {"type": "string", "format": "date-time"},
+        "laboratoryReference": {"type": "string"},
+        "horizons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "depthFrom": {"type": "number", "minimum": 0},
+              "depthTo": {"type": "number", "minimum": 0},
+              "analyticalResults": {"type": "object"}
+            },
+            "required": ["depthFrom", "depthTo"]
+          }
+        },
+        "operator": {"type": "string"},
+        "refSoilSurvey": {"$ref": "https://smart-data-models.github.io/data-models/common-schema.json#/definitions/EntityIdentifierType"}
+      },
+      "required": ["id", "type", "location", "samplingDate", "horizons"]
+    }
+  ]
+}
