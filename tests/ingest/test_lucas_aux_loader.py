@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 import asyncpg
 import os
-import pytest
 
 from nkz_soil.ingest.lucas_loader import load_lucas_topsoil
 from nkz_soil.ingest.lucas_aux_loader import (

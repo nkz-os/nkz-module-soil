@@ -2,7 +2,6 @@
 from __future__ import annotations
 import asyncpg
 import os
-import pytest
 
 from nkz_soil.ingest.esdb_raster_loader import catalog_esdb_rasters
 from nkz_soil.storage import pg as pg_module

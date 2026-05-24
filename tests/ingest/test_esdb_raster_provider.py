@@ -1,9 +1,6 @@
 """ESDB-raster provider samples a COG at given lat/lon and returns the value."""
 from __future__ import annotations
-from pathlib import Path
 import pytest
-import asyncpg
-import os
 
 from nkz_soil.ingest.esdb_raster_loader import catalog_esdb_rasters
 from nkz_soil.providers.esdb_raster import EsdbRasterProvider

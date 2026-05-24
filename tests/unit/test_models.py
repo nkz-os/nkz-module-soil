@@ -1,4 +1,3 @@
-import pytest
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty, CONTEXT_URLS
 
 
