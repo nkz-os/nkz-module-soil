@@ -1,0 +1,129 @@
+# capabilities.yaml — declares what the soil module publishes.
+# Consumed by bioorchestrator at module install/upgrade.
+moduleId: soil
+version: 0.2.0
+publishes:
+  - entityType: AgriSoilExtended
+    sdmStatus: draft-proposal
+    sdmProposal: SDM-001
+    scope: per-parcel
+    refRelationship: refAgriParcel
+    attributes:
+      - name: clayContent
+        unitCode: P1
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [LUCAS, ESDB-Raster, IDENA, IGME, BGS, SoilGrids, lab, sensor]
+        entitlement: open
+        confidence: provided
+      - name: sandContent
+        unitCode: P1
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [LUCAS, ESDB-Raster, SoilGrids, lab]
+        entitlement: open
+      - name: siltContent
+        unitCode: P1
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [LUCAS, ESDB-Raster, SoilGrids, lab]
+        entitlement: open
+      - name: organicCarbon
+        unitCode: P1
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [LUCAS, ESDB-Raster, SoilGrids, lab]
+        entitlement: open
+      - name: bulkDensity
+        unitCode: GL3
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [LUCAS-BD, lab]
+        entitlement: open
+      - name: availableWaterCapacity
+        unitCode: H51
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [derived-from:clayContent,sandContent,bulkDensity,organicCarbon]
+        pedotransfer: SaxtonRawls2006
+        entitlement: open
+        confidence: derived
+      - name: fieldCapacity
+        unitCode: H51
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [derived-from:clayContent,sandContent,organicCarbon]
+        pedotransfer: SaxtonRawls2006
+        entitlement: open
+      - name: wiltingPoint
+        unitCode: H51
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [derived-from:clayContent,sandContent,organicCarbon]
+        pedotransfer: SaxtonRawls2006
+        entitlement: open
+      - name: saturatedHydraulicConductivity
+        unitCode: F61
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [derived-from:clayContent,sandContent,bulkDensity]
+        pedotransfer: SaxtonRawls2006
+        entitlement: open
+      - name: hydrologicGroup
+        unitCode: null
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [derived-from:saturatedHydraulicConductivity]
+        pedotransfer: SCS
+        entitlement: open
+      - name: ph
+        unitCode: null
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [LUCAS, ESDB-Raster, lab]
+        entitlement: open
+      - name: electricalConductivity
+        unitCode: D10
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [LUCAS, lab]
+        entitlement: open
+
+  - entityType: SoilSamplingPoint
+    sdmStatus: draft-proposal
+    sdmProposal: SDM-002
+    scope: per-point
+    refRelationship: refSoilSurvey
+    attributes:
+      - name: horizons
+        unitCode: null
+        temporal: static
+        spatial: point
+        sources: [lab]
+        entitlement: open
+
+  - entityType: SoilSurvey
+    sdmStatus: draft-proposal
+    sdmProposal: SDM-003
+    scope: per-campaign
+    refRelationship: refAgriParcel
+    attributes:
+      - name: pointCount
+        unitCode: null
+        temporal: static
+        spatial: scalar-parcel
+        sources: [lab]
+        entitlement: open
+
+  - entityType: SoilDerivedRaster
+    sdmStatus: draft-proposal
+    sdmProposal: SDM-004
+    scope: per-parcel
+    refRelationship: refAgriParcel
+    attributes:
+      - name: storageUri
+        unitCode: null
+        temporal: static
+        spatial: raster
+        sources: [derived]
+        entitlement: open

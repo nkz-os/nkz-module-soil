@@ -153,5 +153,5 @@ async def test_ingest_parcel_creates_entity():
         assert result["parcelId"] == "test-parcel"
         mock_orion.create_entity.assert_called_once()
         entity = mock_orion.create_entity.call_args[0][0]
-        assert entity["type"] == "AgriSoil"
+        assert entity["type"] == "AgriSoilExtended"
         assert "@context" in entity

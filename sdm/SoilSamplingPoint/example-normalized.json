@@ -1,0 +1,16 @@
+{
+  "id": "urn:ngsi-ld:SoilSamplingPoint:sp-001",
+  "type": "SoilSamplingPoint",
+  "location": {"type": "GeoProperty", "value": {"type": "Point", "coordinates": [-1.645, 42.815]}},
+  "samplingDate": {"type": "Property", "value": {"@type": "DateTime", "@value": "2026-04-15T09:30:00Z"}},
+  "laboratoryReference": {"type": "Property", "value": "LAB-2026-0123"},
+  "horizons": {
+    "type": "Property",
+    "value": [
+      {"depthFrom": 0, "depthTo": 30, "analyticalResults": {"sand": 42, "silt": 33, "clay": 25, "oc": 1.8, "pH": 6.8}}
+    ]
+  },
+  "operator": {"type": "Property", "value": "Field Tech A. Pérez"},
+  "refSoilSurvey": {"type": "Relationship", "object": "urn:ngsi-ld:SoilSurvey:campaign-2026-spring"},
+  "@context": ["https://nkz-os.org/jsonld-contexts/v1/nkz-context.jsonld"]
+}

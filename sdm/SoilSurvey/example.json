@@ -1,0 +1,11 @@
+{
+  "id": "urn:ngsi-ld:SoilSurvey:campaign-2026-spring",
+  "type": "SoilSurvey",
+  "surveyType": "lab-grid",
+  "refAgriParcel": "urn:ngsi-ld:AgriParcel:parcel-123",
+  "startDate": "2026-04-10T00:00:00Z",
+  "endDate": "2026-04-20T00:00:00Z",
+  "instrumentation": ["soil auger", "GPS RTK"],
+  "pointCount": 24,
+  "tenant": "tenant-acme"
+}

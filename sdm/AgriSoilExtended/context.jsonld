@@ -1,0 +1,10 @@
+{
+  "@context": {
+    "AgriSoilExtended": "https://nkz-os.org/sdm-proposals/AgriSoilExtended",
+    "horizons": "https://nkz-os.org/sdm-proposals/AgriSoilExtended#horizons",
+    "hydrologicGroup": "https://nkz-os.org/sdm-proposals/AgriSoilExtended#hydrologicGroup",
+    "parcelVersionId": "https://nkz-os.org/sdm-proposals/AgriSoilExtended#parcelVersionId",
+    "uncertainty": "https://nkz-os.org/sdm-proposals/AgriSoilExtended#uncertainty",
+    "dataSource": "https://nkz-os.org/sdm-proposals/AgriSoilExtended#dataSource"
+  }
+}

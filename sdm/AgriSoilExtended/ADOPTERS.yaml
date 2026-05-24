@@ -1,0 +1,5 @@
+adopters:
+  - name: nkz-os
+    contact: nkz@nkz-os.org
+    deployment: production-2026
+    use_case: cross-module precision agriculture data fabric

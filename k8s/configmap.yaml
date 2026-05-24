@@ -10,3 +10,5 @@ data:
   INGESTION_BUFFER_M: "50.0"
   PROVIDER_RETRY_MAX: "5"
   PROVIDER_ISOLATE_SECONDS: "900"
+  minio-endpoint: "http://minio-service:9000"
+  context-url: "http://api-gateway-service:5000/ngsi-ld-context.json"

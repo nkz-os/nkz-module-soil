@@ -1,0 +1,14 @@
+{
+  "id": "urn:ngsi-ld:SoilDerivedRaster:parcel-123:awc:0-30",
+  "type": "SoilDerivedRaster",
+  "refAgriParcel": "urn:ngsi-ld:AgriParcel:parcel-123",
+  "soilProperty": "availableWaterCapacity",
+  "depthFrom": 0,
+  "depthTo": 30,
+  "storageUri": "s3://nekazari-soil-derived/parcel-123/awc-0-30.tif",
+  "format": "COG",
+  "crs": "EPSG:4326",
+  "resolution": 10,
+  "generatedAt": "2026-05-23T10:00:00Z",
+  "uncertainty": 0.08
+}

@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
@@ -6,6 +7,23 @@ from shapely.geometry import box, shape
 
 from nkz_soil.config import REDIS_URL
 from nkz_soil.models.domain import SoilProperty, DepthInterval, SoilDataResult, ProviderHealth, GeographicScope
+
+
+@dataclass
+class ProviderResult:
+    """Result of a single provider invocation, with full provenance metadata.
+
+    `attributes` maps attribute name → value. Provenance applies to ALL attributes
+    in the result; for per-attribute confidence use `confidence_interval`.
+    """
+    priority: int
+    attributes: dict[str, float | int | str | dict | list]
+    source_tag: str
+    license: str
+    entitlement_required: str = "open"
+    confidence_interval: dict[str, tuple[float, float]] = field(default_factory=dict)
+    observed_at: str | None = None
+    derived_by: dict | None = None
 
 
 def geometry_intersects_bbox(geometry: dict, bbox: tuple[float, float, float, float]) -> bool:

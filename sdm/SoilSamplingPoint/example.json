@@ -1,0 +1,13 @@
+{
+  "id": "urn:ngsi-ld:SoilSamplingPoint:sp-001",
+  "type": "SoilSamplingPoint",
+  "location": {"type": "Point", "coordinates": [-1.645, 42.815]},
+  "samplingDate": "2026-04-15T09:30:00Z",
+  "laboratoryReference": "LAB-2026-0123",
+  "horizons": [
+    {"depthFrom": 0, "depthTo": 30, "analyticalResults": {"sand": 42, "silt": 33, "clay": 25, "oc": 1.8, "pH": 6.8}},
+    {"depthFrom": 30, "depthTo": 60, "analyticalResults": {"sand": 38, "silt": 30, "clay": 32, "oc": 0.9, "pH": 7.1}}
+  ],
+  "operator": "Field Tech A. Pérez",
+  "refSoilSurvey": "urn:ngsi-ld:SoilSurvey:campaign-2026-spring"
+}

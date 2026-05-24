@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 from arq.connections import RedisSettings
 
-from nkz_soil.config import CONTEXT_URL, REDIS_URL
+from nkz_soil.config import REDIS_URL
 from nkz_soil.models.domain import DepthInterval, SoilProperty
+from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
 from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
-from nkz_soil.providers.base import ProviderRegistry, RedisCircuitBreaker
+from nkz_soil.providers.base import ProviderRegistry, ProviderResult, RedisCircuitBreaker
 from nkz_soil.providers.cache import ProviderCache
 from nkz_soil.providers.metrics import metrics
 from nkz_soil.storage.orion import OrionClient
@@ -74,6 +74,47 @@ class EnrichedHorizon:
     relative_compaction: dict | None = None
 
 
+def _winner_source_per_attr(merged_attrs: dict, results: list[ProviderResult]) -> dict[str, dict]:
+    """For each attribute key, find the highest-priority ProviderResult that supplied it."""
+    winners: dict[str, dict] = {}
+    sorted_results = sorted(results, key=lambda r: -r.priority)
+    for attr in merged_attrs:
+        for r in sorted_results:
+            if attr in r.attributes:
+                winners[attr] = {
+                    "source_tag": r.source_tag,
+                    "license": r.license,
+                    "observed_at": r.observed_at,
+                    "confidence": r.confidence_interval.get(attr) if r.confidence_interval else None,
+                }
+                break
+    return winners
+
+
+def build_agri_soil_extended(
+    parcel_id: str,
+    location: dict,
+    merged_horizons: list[dict],
+    results: list[ProviderResult],
+    parcel_version: str,
+) -> AgriSoilExtended:
+    """Build an AgriSoilExtended entity tagging horizons with winner-takes-provenance."""
+    winners = _winner_source_per_attr({"horizons": True}, results)
+    hw = winners.get("horizons", {})
+    return AgriSoilExtended(
+        id=f"urn:ngsi-ld:AgriSoilExtended:{parcel_id}",
+        location=GeoProperty(value=location),
+        refAgriParcel=Relationship(object=f"urn:ngsi-ld:AgriParcel:{parcel_id}"),
+        horizons=TaggedProperty(
+            value=merged_horizons,
+            provided_by=hw.get("source_tag"),
+            license_id=hw.get("license"),
+            observed_at=hw.get("observed_at"),
+        ),
+        parcelVersionId=TaggedProperty(value=parcel_version),
+    )
+
+
 async def startup(ctx: dict) -> None:
     ctx["registry"] = ProviderRegistry()
     ctx["circuit_breaker"] = RedisCircuitBreaker(redis_url=REDIS_URL)
@@ -101,6 +142,7 @@ async def ingest_parcel(
     cache: ProviderCache = ctx["cache"]
 
     all_results = []
+    provider_results: list[ProviderResult] = []
     for provider in registry.get_all():
         if await circuit_breaker.is_open(provider.name):
             continue
@@ -110,6 +152,8 @@ async def ingest_parcel(
         cached = await cache.get(provider.name, geometry, ALL_PROPERTIES, STANDARD_DEPTHS)
         if cached:
             all_results.append(cached)
+            if isinstance(cached, ProviderResult):
+                provider_results.append(cached)
             await circuit_breaker.record_success(provider.name)
             metrics.record_fetch(provider.name, 0.0, from_cache=True)
             continue
@@ -119,6 +163,8 @@ async def ingest_parcel(
             result = await provider.fetch(geometry, ALL_PROPERTIES, STANDARD_DEPTHS)
             duration_ms = (time.monotonic() - start) * 1000
             all_results.append(result)
+            if isinstance(result, ProviderResult):
+                provider_results.append(result)
             await cache.set(provider.name, geometry, ALL_PROPERTIES, STANDARD_DEPTHS, result)
             await circuit_breaker.record_success(provider.name)
             metrics.record_fetch(provider.name, duration_ms, from_cache=False)
@@ -129,8 +175,6 @@ async def ingest_parcel(
 
     merged_horizons = _cascade_merge(all_results, STANDARD_DEPTHS)
     merged_horizons = _apply_pedotransfer(merged_horizons)
-    uncertainty = _aggregate_uncertainty(all_results)
-    now_iso = datetime.now(timezone.utc).isoformat()
 
     compaction_list = [
         {
@@ -143,37 +187,35 @@ async def ingest_parcel(
         if h.relative_compaction
     ]
 
-    async with OrionClient(tenant_id) as orion:
-        entity_id = f"urn:ngsi-ld:AgriSoil:{tenant_id}:{parcel_id}"
-        existing = await orion.query_entities(type="AgriSoil")
-        existing_match = [
-            e for e in existing
-            if e.get("id") == entity_id
-        ]
+    # Synthesize ProviderResult for provenance tracking from legacy SoilDataResult providers.
+    # Each legacy result contributes a horizons-keyed entry so the winner election has coverage.
+    legacy_as_provider_results = [
+        ProviderResult(
+            priority=PROVIDER_PRIORITIES.get(r.provider, 0),
+            attributes={"horizons": True},
+            source_tag=r.provider,
+            license=r.attribution or "unknown",
+        )
+        for r in all_results
+        if not isinstance(r, ProviderResult) and hasattr(r, "provider")
+    ]
+    all_provider_results = provider_results + legacy_as_provider_results
 
-        entity: dict = {
-            "id": entity_id,
-            "type": "AgriSoil",
-            "@context": [CONTEXT_URL],
-            "location": {"type": "GeoProperty", "value": geometry},
-            "refAgriParcel": {
-                "type": "Relationship",
-                "object": f"urn:ngsi-ld:AgriParcel:{tenant_id}:{parcel_id}",
-            },
-            "parcelVersionId": {"type": "Property", "value": parcel_version_id},
-            "horizons": {
-                "type": "Property",
-                "value": [_horizon_to_dict(h) for h in merged_horizons],
-            },
-            "dataSource": {"type": "Property", "value": _primary_source(all_results)},
-            "uncertainty": {"type": "Property", "value": uncertainty},
-            "lastUpdated": {"type": "Property", "value": now_iso},
-        }
-        if compaction_list:
-            entity["relativeCompaction"] = {
-                "type": "Property",
-                "value": compaction_list,
-            }
+    entity = build_agri_soil_extended(
+        parcel_id=f"{tenant_id}:{parcel_id}",
+        location=geometry,
+        merged_horizons=[_horizon_to_dict(h) for h in merged_horizons],
+        results=all_provider_results,
+        parcel_version=parcel_version_id,
+    ).to_ngsi()
+
+    if compaction_list:
+        entity["relativeCompaction"] = {"type": "Property", "value": compaction_list}
+
+    entity_id = entity["id"]
+    async with OrionClient(tenant_id) as orion:
+        existing = await orion.query_entities(type="AgriSoilExtended")
+        existing_match = [e for e in existing if e.get("id") == entity_id]
 
         if existing_match:
             await orion.patch_entity(entity_id, {

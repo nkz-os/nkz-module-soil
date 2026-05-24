@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nkz-os.org/sdm-proposals/AgriSoilExtended/schema.json",
+  "title": "AgriSoilExtended (SDM-001)",
+  "description": "Extension of FIWARE AgriSoil to model precision-agriculture soil characterization: horizons, particle-size distribution, organic carbon, bulk density, hydraulic properties, and full per-attribute provenance.",
+  "type": "object",
+  "allOf": [
+    {"$ref": "https://smart-data-models.github.io/data-models/common-schema.json#/definitions/GSMA-Commons"},
+    {"$ref": "https://smart-data-models.github.io/data-models/common-schema.json#/definitions/Location-Commons"},
+    {
+      "properties": {
+        "type": {"type": "string", "enum": ["AgriSoilExtended"]},
+        "refAgriParcel": {"$ref": "https://smart-data-models.github.io/data-models/common-schema.json#/definitions/EntityIdentifierType"},
+        "parcelVersionId": {"type": "string"},
+        "horizons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "depthFrom": {"type": "number", "minimum": 0},
+              "depthTo": {"type": "number", "minimum": 0},
+              "sandContent": {"type": "number", "minimum": 0, "maximum": 100},
+              "siltContent": {"type": "number", "minimum": 0, "maximum": 100},
+              "clayContent": {"type": "number", "minimum": 0, "maximum": 100},
+              "organicCarbon": {"type": "number", "minimum": 0},
+              "bulkDensity": {"type": "number", "minimum": 0},
+              "fieldCapacity": {"type": "number", "minimum": 0, "maximum": 1},
+              "wiltingPoint": {"type": "number", "minimum": 0, "maximum": 1},
+              "availableWaterCapacity": {"type": "number", "minimum": 0},
+              "saturatedHydraulicConductivity": {"type": "number", "minimum": 0},
+              "ph": {"type": "number", "minimum": 0, "maximum": 14},
+              "electricalConductivity": {"type": "number", "minimum": 0},
+              "calciumCarbonate": {"type": "number", "minimum": 0}
+            },
+            "required": ["depthFrom", "depthTo"]
+          }
+        },
+        "hydrologicGroup": {"type": "string", "enum": ["A", "B", "C", "D"]},
+        "relativeCompaction": {"type": "number"},
+        "dataSource": {"type": "string"},
+        "uncertainty": {"type": "number"}
+      },
+      "required": ["id", "type", "location", "refAgriParcel", "horizons"]
+    }
+  ]
+}

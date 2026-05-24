@@ -1,0 +1,44 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: soil-migrate
+  namespace: nekazari
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: migrate
+        image: ghcr.io/nkz-os/nkz-module-soil/migrate:latest
+        imagePullPolicy: Always
+        env:
+        - name: SOIL_PG_DSN
+          valueFrom:
+            secretKeyRef:
+              name: soil-module-secret
+              key: pg-dsn
+        - name: MINIO_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: soil-module-config
+              key: minio-endpoint
+        - name: MINIO_RAW_BUCKET
+          value: nekazari-soil-raw
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: soil-module-secret
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: soil-module-secret
+              key: MINIO_SECRET_KEY
+        resources:
+          requests:
+            memory: 512Mi
+            cpu: 250m
+          limits:
+            memory: 2Gi
+            cpu: 1000m

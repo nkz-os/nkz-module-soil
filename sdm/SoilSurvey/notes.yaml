@@ -1,0 +1,7 @@
+purpose: |
+  Groups multiple SoilSamplingPoints into a campaign with shared metadata
+  (date range, instrumentation, tenant ownership).
+upstream_alignment:
+  base: none (new entity)
+units:
+  reference: UN/CEFACT

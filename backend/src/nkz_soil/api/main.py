@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from nkz_soil.api.limiter import limiter
+from nkz_soil.api.routes.capabilities import router as capabilities_router
 from nkz_soil.api.routes.layers import router as layers_router
 from nkz_soil.api.routes.metrics import router as metrics_router
 from nkz_soil.api.routes.providers import router as providers_router, set_registry
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
 
     app.state.limiter = limiter
 
+    app.include_router(capabilities_router)
     app.include_router(reading_router, prefix="/v1/soil")
     app.include_router(writing_router, prefix="/v1/soil")
     app.include_router(layers_router, prefix="/v1/soil")

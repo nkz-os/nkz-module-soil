@@ -1,0 +1,24 @@
+{
+  "id": "urn:ngsi-ld:AgriSoilExtended:parcel-123",
+  "type": "AgriSoilExtended",
+  "location": {
+    "type": "Polygon",
+    "coordinates": [[[-1.65, 42.81],[-1.64, 42.81],[-1.64, 42.82],[-1.65, 42.82],[-1.65, 42.81]]]
+  },
+  "refAgriParcel": "urn:ngsi-ld:AgriParcel:parcel-123",
+  "parcelVersionId": "v1",
+  "horizons": [
+    {
+      "depthFrom": 0, "depthTo": 30,
+      "sandContent": 42, "siltContent": 33, "clayContent": 25,
+      "organicCarbon": 1.8, "bulkDensity": 1.35,
+      "fieldCapacity": 0.28, "wiltingPoint": 0.14,
+      "availableWaterCapacity": 0.14,
+      "saturatedHydraulicConductivity": 12.4,
+      "ph": 6.8, "electricalConductivity": 0.45, "calciumCarbonate": 0.5
+    }
+  ],
+  "hydrologicGroup": "B",
+  "dataSource": "LUCAS-2018",
+  "uncertainty": 0.12
+}

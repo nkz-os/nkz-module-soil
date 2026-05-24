@@ -1,0 +1,8 @@
+{
+  "@context": {
+    "SoilSamplingPoint": "https://nkz-os.org/sdm-proposals/SoilSamplingPoint",
+    "samplingDate": "https://nkz-os.org/sdm-proposals/SoilSamplingPoint#samplingDate",
+    "laboratoryReference": "https://nkz-os.org/sdm-proposals/SoilSamplingPoint#laboratoryReference",
+    "refSoilSurvey": "https://nkz-os.org/sdm-proposals/SoilSamplingPoint#refSoilSurvey"
+  }
+}
