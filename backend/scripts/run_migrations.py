@@ -50,13 +50,9 @@ async def _bulk_load():
     print(f"[load] organic rows = {await load_lucas_organic(_download(s3, 'lucas/LUCAS2018_ORG.csv', tmp / 'ORG.csv'))}", flush=True)
     # Texture is intentionally not loaded here: LUCAS_Text_All_10032025.csv is
     # not published in the 2018 SOIL bundle. Per-point sand/silt/clay are
-    # already on soil_module.lucas_topsoil_2018.
-    try:
-        print(f"[catalog] ESDB rasters = {await catalog_esdb_rasters(bucket=RAW_BUCKET, prefix='esdb/')}", flush=True)
-    except Exception as exc:  # noqa: BLE001
-        # Known FU-1: bounds not reprojected from EPSG:3035 to 4326. Cataloging
-        # is best-effort during T38 smoke; do not abort migrate on its failure.
-        print(f"[catalog] ESDB rasters SKIPPED — {type(exc).__name__}: {exc}", flush=True)
+    # already on soil_module.lucas_topsoil_2018 and migration 007 backfills
+    # lucas_texture_all from it.
+    print(f"[catalog] ESDB rasters = {await catalog_esdb_rasters(bucket=RAW_BUCKET, prefix='esdb/')}", flush=True)
 
 
 async def main():

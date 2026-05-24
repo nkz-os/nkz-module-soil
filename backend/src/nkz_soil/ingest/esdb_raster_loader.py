@@ -9,7 +9,10 @@ import re
 from pathlib import PurePosixPath
 import boto3
 from rasterio.io import MemoryFile
+from rasterio.warp import transform_bounds
 from nkz_soil.storage.pg import get_pool
+
+_TARGET_CRS = "EPSG:4326"
 
 _FNAME_RE = re.compile(r"^(?P<var>[A-Z0-9_]+?)_(?P<depth>TOP|SUB|ALL)\.tif$", re.IGNORECASE)
 
@@ -67,13 +70,17 @@ async def catalog_esdb_rasters(
 
             body = s3.get_object(Bucket=bucket, Key=obj["Key"])["Body"].read()
             with MemoryFile(body) as mem, mem.open() as ds:
+                src_crs = str(ds.crs) if ds.crs else "EPSG:3035"
                 bounds = ds.bounds
-                # TODO(phase4): reproject bbox from raster CRS (typically EPSG:3035) to EPSG:4326
-                # before storing. Current implementation passes raw bounds — invalid for non-4326
-                # rasters in production. Acceptable for test fixtures and during ingest of EU rasters
-                # if a subsequent reprojection step normalizes the bbox column.
-                wkt = _bbox_wkt(bounds.left, bounds.bottom, bounds.right, bounds.top)
-                crs = str(ds.crs) if ds.crs else "EPSG:3035"
+                # Reproject native raster bounds to EPSG:4326 so the catalog
+                # column (PostGIS Polygon, SRID 4326) holds a valid lon/lat
+                # extent regardless of the raster's source CRS.
+                w, s, e, n = transform_bounds(src_crs, _TARGET_CRS,
+                                              bounds.left, bounds.bottom,
+                                              bounds.right, bounds.top,
+                                              densify_pts=21)
+                wkt = _bbox_wkt(w, s, e, n)
+                crs = src_crs
                 res = int(round(abs(ds.transform[0])))
 
             async with pool.acquire() as conn:
