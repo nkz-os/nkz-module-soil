@@ -11,8 +11,7 @@ import boto3
 
 from nkz_soil.ingest.lucas_loader import load_lucas_topsoil
 from nkz_soil.ingest.lucas_aux_loader import (
-    load_lucas_bulk_density, load_lucas_erosion,
-    load_lucas_organic, load_lucas_texture,
+    load_lucas_bulk_density, load_lucas_erosion, load_lucas_organic,
 )
 from nkz_soil.ingest.esdb_raster_loader import catalog_esdb_rasters
 
@@ -49,8 +48,15 @@ async def _bulk_load():
     print(f"[load] bd     rows = {await load_lucas_bulk_density(_download(s3, 'lucas/BulkDensity_2018_final-2.csv', tmp / 'BD.csv'))}", flush=True)
     print(f"[load] erosion rows = {await load_lucas_erosion(_download(s3, 'lucas/LUCAS2018_EROSION.csv', tmp / 'ERO.csv'))}", flush=True)
     print(f"[load] organic rows = {await load_lucas_organic(_download(s3, 'lucas/LUCAS2018_ORG.csv', tmp / 'ORG.csv'))}", flush=True)
-    print(f"[load] texture rows = {await load_lucas_texture(_download(s3, 'lucas/LUCAS_Text_All_10032025.csv', tmp / 'TEX.csv'))}", flush=True)
-    print(f"[catalog] ESDB rasters = {await catalog_esdb_rasters(bucket=RAW_BUCKET, prefix='esdb/')}", flush=True)
+    # Texture is intentionally not loaded here: LUCAS_Text_All_10032025.csv is
+    # not published in the 2018 SOIL bundle. Per-point sand/silt/clay are
+    # already on soil_module.lucas_topsoil_2018.
+    try:
+        print(f"[catalog] ESDB rasters = {await catalog_esdb_rasters(bucket=RAW_BUCKET, prefix='esdb/')}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        # Known FU-1: bounds not reprojected from EPSG:3035 to 4326. Cataloging
+        # is best-effort during T38 smoke; do not abort migrate on its failure.
+        print(f"[catalog] ESDB rasters SKIPPED — {type(exc).__name__}: {exc}", flush=True)
 
 
 async def main():

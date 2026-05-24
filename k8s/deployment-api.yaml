@@ -16,7 +16,7 @@ spec:
       containers:
         - name: api
           image: ghcr.io/nkz-os/nkz-module-soil/soil-api:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           envFrom:

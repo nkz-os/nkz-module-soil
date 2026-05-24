@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && \
     rm -rf /tmp/nkz-src
 
 COPY pyproject.toml ./
+COPY capabilities.yaml ./
 COPY backend/ ./backend/
 
 RUN pip install --no-cache-dir -e "."
