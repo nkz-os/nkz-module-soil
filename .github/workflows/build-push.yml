@@ -79,6 +79,8 @@ jobs:
 
       - name: Build MF2 bundle
         run: pnpm run build:module
+        env:
+          NKZ_VERSION_HASH: ${{ github.sha }}
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4
@@ -87,7 +89,7 @@ jobs:
           path: dist/
           retention-days: 30
 
-      - name: Deploy to MinIO
+      - name: Deploy to MinIO (versioned)
         if: github.event_name != 'pull_request'
         env:
           MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
@@ -98,10 +100,30 @@ jobs:
             echo "::warning::MinIO secrets missing (MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY). Skipping deploy."
             exit 0
           fi
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
           wget -q https://dl.min.io/client/mc/release/linux-amd64/mc
           chmod +x mc
           ./mc alias set myminio "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
-          ./mc cp -r dist/ myminio/nekazari-frontend/modules/soil/
+          ./mc cp -r dist/ "myminio/nekazari-frontend/modules/soil/${SHORT_SHA}/"
+          ./mc anonymous set public "myminio/nekazari-frontend/modules/soil/${SHORT_SHA}/"
+
+      - name: Activate version
+        if: github.event_name != 'pull_request'
+        env:
+          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+          if [ -z "${MINIO_ENDPOINT:-}" ] || [ -z "${MINIO_ACCESS_KEY:-}" ] || [ -z "${MINIO_SECRET_KEY:-}" ]; then
+            echo "::warning::MinIO secrets missing. Skipping activation."
+            exit 0
+          fi
+          curl -s -X POST "${{ secrets.API_URL }}/api/modules/soil/deploy" \
+            -H "Content-Type: application/json" \
+            -H "X-Internal-Token: ${{ secrets.NKZ_INTERNAL_TOKEN }}" \
+            -d "{\"version\": \"${SHORT_SHA}\"}" \
+            || echo "WARNING: deploy activation failed (API may not support /deploy yet)"
 
   # ==========================================================================
   # Build and push API Docker image
