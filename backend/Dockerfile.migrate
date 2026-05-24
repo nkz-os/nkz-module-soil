@@ -1,15 +1,18 @@
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgdal32 gdal-bin && rm -rf /var/lib/apt/lists/*
+    libgdal32 gdal-bin git && rm -rf /var/lib/apt/lists/* && \
+    git clone --depth 1 https://github.com/nkz-os/nkz.git /tmp/nkz-src && \
+    pip install --no-cache-dir /tmp/nkz-src/services/nkz-platform-sdk && \
+    rm -rf /tmp/nkz-src
 
 COPY pyproject.toml ./
-COPY src ./src
-COPY migrations ./migrations
-COPY scripts ./scripts
+COPY backend/src ./backend/src
+COPY backend/migrations ./backend/migrations
+COPY backend/scripts ./backend/scripts
 
 RUN pip install --no-cache-dir -e ".[dev]"
 
-ENV PYTHONPATH=/app/src
-ENTRYPOINT ["python", "scripts/run_migrations.py"]
+ENV PYTHONPATH=/app/backend/src
+ENTRYPOINT ["python", "backend/scripts/run_migrations.py"]

@@ -35,6 +35,17 @@ spec:
             secretKeyRef:
               name: soil-module-secret
               key: MINIO_SECRET_KEY
+        - name: ORION_BASE_URL
+          value: http://orion-ld-service:1026
+        - name: CONTEXT_URL
+          value: http://api-gateway-service:5000/ngsi-ld-context.json
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: password
+        - name: REDIS_URL
+          value: redis://:$(REDIS_PASSWORD)@redis-service:6379/0
         resources:
           requests:
             memory: 512Mi
