@@ -4,7 +4,7 @@ All Properties use TaggedProperty which carries provenance sub-properties
 (providedBy, license, observedAt, confidenceInterval, derivedBy).
 """
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 from pydantic import BaseModel
 

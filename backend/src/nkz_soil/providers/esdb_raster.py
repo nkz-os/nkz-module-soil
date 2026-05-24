@@ -17,7 +17,6 @@ import os
 from urllib.parse import urlparse
 
 import boto3
-import rasterio
 from rasterio.io import MemoryFile
 
 from nkz_soil.providers.base import ProviderResult

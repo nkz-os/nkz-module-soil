@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 from arq.connections import RedisSettings
 
-from nkz_soil.config import CONTEXT_URL, REDIS_URL
+from nkz_soil.config import REDIS_URL
 from nkz_soil.models.domain import DepthInterval, SoilProperty
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons

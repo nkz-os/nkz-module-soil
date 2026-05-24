@@ -8,7 +8,6 @@ import os
 import re
 from pathlib import PurePosixPath
 import boto3
-import rasterio
 from rasterio.io import MemoryFile
 from nkz_soil.storage.pg import get_pool
 
