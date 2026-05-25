@@ -12,6 +12,7 @@ from nkz_soil.pedotransfer.awc import awc_from_horizons
 from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
+from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.providers.base import ProviderRegistry, ProviderResult, RedisCircuitBreaker
 from nkz_soil.providers.bgs import BgsProvider
 from nkz_soil.providers.cache import ProviderCache
@@ -323,6 +324,9 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
             h.relative_compaction = relative_compaction(
                 h.bulk_density, h.sand, h.silt, h.clay
             )
+
+        if h.sand is not None and h.silt is not None and h.clay is not None:
+            h.usda_texture_class = usda_texture_class(h.sand, h.silt, h.clay)
 
     return horizons
 
