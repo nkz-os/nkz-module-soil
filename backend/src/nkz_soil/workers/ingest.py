@@ -69,6 +69,9 @@ class EnrichedHorizon:
     coarse_fragments: float | None = None
     ksat_saturated: float | None = None
     available_water_capacity: float | None = None
+    field_capacity: float | None = None
+    wilting_point: float | None = None
+    usda_texture_class: str | None = None
     hydrologic_group: str | None = None
     penetration_resistance: float | None = None
     relative_compaction: dict | None = None
@@ -274,6 +277,8 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
             h.available_water_capacity = awc_from_horizons(
                 ptf["field_capacity"], ptf["wilting_point"]
             )
+            h.field_capacity = ptf["field_capacity"]
+            h.wilting_point = ptf["wilting_point"]
             h.hydrologic_group = scs_hydrologic_group(ptf["ksat"])
 
         if (
@@ -289,22 +294,40 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
     return horizons
 
 
+def _emit_raw(h: EnrichedHorizon, attr: str):
+    """Emit the redistributable-safe value: only if a redistributable source supplied it.
+
+    License boundary: a raw fraction whose only/winning source is non-redistributable
+    (e.g. JRC LUCAS texture) is withheld here, even though it was used for pedotransfer.
+    """
+    if h.emit is not None and attr in h.emit:
+        return h.emit[attr]
+    # No provenance recorded (e.g. direct lab input) -> treat as emittable.
+    if h.provenance is None or attr not in h.provenance:
+        return getattr(h, attr, None)
+    return None
+
+
 def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
     return {
         "depthFrom": horizon.depth_from,
         "depthTo": horizon.depth_to,
-        "sand": horizon.sand,
-        "silt": horizon.silt,
-        "clay": horizon.clay,
-        "organicCarbon": horizon.organic_carbon,
-        "bulkDensity": horizon.bulk_density,
-        "ph": horizon.ph,
-        "cec": horizon.cec,
-        "coarseFragments": horizon.coarse_fragments,
+        "sand": _emit_raw(horizon, "sand"),
+        "silt": _emit_raw(horizon, "silt"),
+        "clay": _emit_raw(horizon, "clay"),
+        "organicCarbon": _emit_raw(horizon, "organic_carbon"),
+        "bulkDensity": _emit_raw(horizon, "bulk_density"),
+        "ph": _emit_raw(horizon, "ph"),
+        "cec": _emit_raw(horizon, "cec"),
+        "coarseFragments": _emit_raw(horizon, "coarse_fragments"),
+        "penetrationResistance": _emit_raw(horizon, "penetration_resistance"),
+        # Derived products — always emitted (new works under the license).
         "ksatSaturated": horizon.ksat_saturated,
         "availableWaterCapacity": horizon.available_water_capacity,
+        "fieldCapacity": horizon.field_capacity,
+        "wiltingPoint": horizon.wilting_point,
         "hydrologicGroup": horizon.hydrologic_group,
-        "penetrationResistance": horizon.penetration_resistance,
+        "usdaTextureClass": horizon.usda_texture_class,
     }
 
 
