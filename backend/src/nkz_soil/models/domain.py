@@ -71,6 +71,9 @@ class SoilDataResult:
     uncertainty: float
     geometry: dict
     attribution: str | None = None
+    license: str | None = None
+    redistributable: bool = True
+    priority: int = 0
 
 
 @dataclass
