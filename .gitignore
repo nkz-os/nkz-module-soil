@@ -26,3 +26,9 @@ docs/audits/
 *HANDOVER*.md
 HANDOFF.md
 CURRENT_STATE.md
+
+# Never commit raster data (JRC LUCAS texture is no-redistribution; lives only in private MinIO)
+*.tif
+*.tif.*
+*.tfw
+*.vrt
