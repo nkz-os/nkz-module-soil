@@ -1,35 +1,45 @@
-"""ESDB Raster Library v2 provider — samples COGs from MinIO at query point.
-
-Reads catalog from soil_module.esdb_raster_index, then samples band values
-from the matching COGs stored in MinIO.
-
-COORDINATE CONVENTION (Phase 1–3):
-The esdb_raster_loader stores raw raster-CRS coordinates (typically EPSG:3035)
-in the bbox column, which is typed EPSG:4326. Downstream queries that use
-ST_Contains(bbox, ST_MakePoint(lon, lat)) therefore expect lon/lat to be in
-the raster's native CRS unit space, not in geographic degrees.
-
-TODO(phase4): once esdb_raster_loader reprojects bbox to true EPSG:4326, add
-rio_transform("EPSG:4326", ds.crs, [lon], [lat]) here before sampling.
-"""
 from __future__ import annotations
 import os
 from urllib.parse import urlparse
 
 import boto3
 from rasterio.io import MemoryFile
+from rasterio.warp import transform as warp_transform
 
-from nkz_soil.providers.base import ProviderResult
+from nkz_soil.models.domain import SoilDataResult, Horizon
+from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.storage.pg import get_pool
 
-# Maps ESDB variable name → AgriSoilExtended NGSI-LD attribute name.
-_VAR_MAP = {
-    "CLAY": "clayContent",
-    "SAND": "sandContent",
-    "SILT": "siltContent",
-    "OC": "organicCarbon",
-    "PH": "ph",
-}
+# ESDB variable -> Horizon field
+_VAR_TO_HORIZON = {"CLAY": "clay", "SAND": "sand", "SILT": "silt",
+                   "OC": "organic_carbon", "PH": "ph"}
+_TOPSOIL = {(0, 5), (5, 15), (15, 30)}
+
+
+def _centroid(geometry: dict) -> tuple[float, float]:
+    if geometry.get("type") == "Point":
+        c = geometry["coordinates"]
+        return c[0], c[1]
+    if geometry.get("type") == "Polygon":
+        ring = geometry["coordinates"][0]
+        return (sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring))
+    return 0.0, 0.0
+
+
+def _sample(ds, lon: float, lat: float) -> float | None:
+    """Reproject (lon,lat) into the raster CRS, sample, return None on NoData/oob."""
+    xs, ys = warp_transform("EPSG:4326", ds.crs, [lon], [lat])
+    try:
+        val = next(ds.sample([(xs[0], ys[0])]))[0]
+    except (StopIteration, IndexError):
+        return None
+    if val is None:
+        return None
+    if ds.nodata is not None and float(val) == float(ds.nodata):
+        return None
+    if float(val) <= -3.0e38:  # Float32 sentinel guard when nodata undeclared
+        return None
+    return float(val)
 
 
 class EsdbRasterProvider:
@@ -37,20 +47,18 @@ class EsdbRasterProvider:
     priority = 18
 
     def __init__(self, variables: list[str] | None = None) -> None:
-        self.variables = variables or list(_VAR_MAP.keys())
+        self.variables = variables or list(_VAR_TO_HORIZON.keys())
 
-    async def fetch(
-        self,
-        *,
-        lat: float,
-        lon: float,
-        geometry: dict | None = None,
-    ) -> ProviderResult | None:
+    def covers(self, geometry: dict) -> bool:
+        return geometry_intersects_bbox(geometry, (-25, 34, 45, 72))
+
+    async def fetch(self, geometry: dict, properties, depths) -> SoilDataResult | None:
+        lon, lat = _centroid(geometry)
         pool = await get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT variable, depth_layer, storage_uri, crs
+                SELECT variable, storage_uri
                 FROM soil_module.esdb_raster_index
                 WHERE variable = ANY($1::text[])
                   AND depth_layer IN ('TOP', 'ALL')
@@ -61,42 +69,35 @@ class EsdbRasterProvider:
         if not rows:
             return None
 
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=os.environ["MINIO_ENDPOINT"],
-            aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
-            aws_secret_access_key=os.environ["MINIO_SECRET_KEY"],
-        )
-        attrs: dict[str, float] = {}
+        s3 = boto3.client("s3", endpoint_url=os.environ["MINIO_ENDPOINT"],
+                          aws_access_key_id=os.environ["MINIO_ACCESS_KEY"],
+                          aws_secret_access_key=os.environ["MINIO_SECRET_KEY"])
+        topvals: dict[str, float] = {}
         for r in rows:
+            field = _VAR_TO_HORIZON.get(r["variable"].upper())
+            if not field:
+                continue
             uri = urlparse(r["storage_uri"])
-            obj = s3.get_object(Bucket=uri.netloc, Key=uri.path.lstrip("/"))
-            body = obj["Body"].read()
+            body = s3.get_object(Bucket=uri.netloc, Key=uri.path.lstrip("/"))["Body"].read()
             with MemoryFile(body) as mem, mem.open() as ds:
-                # Use lon/lat directly as raster-space coordinates (see module docstring).
-                try:
-                    val = next(ds.sample([(lon, lat)]))[0]
-                except (StopIteration, IndexError):
-                    continue
-                attr = _VAR_MAP.get(r["variable"].upper())
-                if attr and val is not None:
-                    attrs[attr] = float(val)
-
-        if not attrs:
+                v = _sample(ds, lon, lat)
+            if v is not None:
+                topvals[field] = round(v, 3)
+        if not topvals:
             return None
 
-        return ProviderResult(
-            priority=self.priority,
-            attributes=attrs,
-            source_tag="ESDB-Raster-v2",
-            license="JRC-ESDB-Raster-Attribution",
-            entitlement_required="open",
+        horizons = [Horizon(depth_from=d.depth_from, depth_to=d.depth_to, **topvals)
+                    for d in depths if (d.depth_from, d.depth_to) in _TOPSOIL]
+        if not horizons:
+            return None
+        return SoilDataResult(
+            provider=self.name, horizons=horizons, uncertainty=0.3, geometry=geometry,
+            attribution="Panagos et al. 2022 (ESDBv2 Raster Library)",
+            license="JRC-ESDB-Raster-Attribution", redistributable=True, priority=self.priority,
         )
 
     async def health(self) -> dict:
         pool = await get_pool()
         async with pool.acquire() as conn:
-            n = await conn.fetchval(
-                "SELECT COUNT(*) FROM soil_module.esdb_raster_index"
-            )
+            n = await conn.fetchval("SELECT COUNT(*) FROM soil_module.esdb_raster_index")
         return {"name": self.name, "status": "ok", "cataloged_rasters": n}
