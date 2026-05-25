@@ -19,6 +19,7 @@ from nkz_soil.providers.igme import IgmeProvider
 from nkz_soil.providers.iot_sensor import IotSensorProvider
 from nkz_soil.providers.lab_analysis import LabAnalysisProvider
 from nkz_soil.providers.lucas import LucasProvider
+from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.soilgrids import SoilGridsProvider
 
 
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     registry.register(IgmeProvider())
     registry.register(BgsProvider())
     registry.register(LucasProvider())
+    registry.register(LucasTextureRasterProvider())
     registry.register(EuSoilHydroGridsProvider())
     registry.register(SoilGridsProvider())
     set_registry(registry)

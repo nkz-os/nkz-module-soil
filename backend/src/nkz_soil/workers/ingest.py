@@ -23,6 +23,7 @@ from nkz_soil.providers.igme import IgmeProvider
 from nkz_soil.providers.iot_sensor import IotSensorProvider
 from nkz_soil.providers.lab_analysis import LabAnalysisProvider
 from nkz_soil.providers.lucas import LucasProvider
+from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.metrics import metrics
 from nkz_soil.providers.soilgrids import SoilGridsProvider
 from nkz_soil.storage.orion import OrionClient
@@ -134,7 +135,7 @@ async def startup(ctx: dict) -> None:
     registry = ProviderRegistry()
     for provider in (
         LabAnalysisProvider(), IotSensorProvider(), IdenaProvider(), IgmeProvider(),
-        BgsProvider(), LucasProvider(), EsdbRasterProvider(),
+        BgsProvider(), LucasProvider(), LucasTextureRasterProvider(), EsdbRasterProvider(),
         EuSoilHydroGridsProvider(), SoilGridsProvider(),
     ):
         registry.register(provider)
