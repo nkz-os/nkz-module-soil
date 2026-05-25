@@ -77,6 +77,11 @@ class LucasProvider:
                 continue
             topvals[field] = round(sum(v * w for v, w in valid) / sum(w for _, w in valid), 3)
 
+        # LUCAS stores organic carbon in g/kg, but the canonical organicCarbon unit
+        # is percent (capabilities.yaml P1) and Saxton-Rawls expects %. Convert.
+        if "organic_carbon" in topvals:
+            topvals["organic_carbon"] = round(topvals["organic_carbon"] / 10.0, 3)
+
         horizons = [
             Horizon(depth_from=d.depth_from, depth_to=d.depth_to, **topvals)
             for d in depths if (d.depth_from, d.depth_to) in _TOPSOIL_DEPTHS

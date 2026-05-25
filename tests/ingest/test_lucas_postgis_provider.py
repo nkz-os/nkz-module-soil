@@ -35,7 +35,8 @@ def test_knn_returns_attributes_from_nearest_point(loaded):
     top = res.horizons[0]
     assert abs(top.clay - 25.0) < 0.01
     assert abs(top.sand - 42.0) < 0.01
-    assert abs(top.organic_carbon - 18.5) < 0.01
+    # OC stored as 18.5 g/kg in the fixture; provider emits percent (÷10).
+    assert abs(top.organic_carbon - 1.85) < 0.01
 
 
 def test_knn_returns_none_outside_buffer(loaded):
