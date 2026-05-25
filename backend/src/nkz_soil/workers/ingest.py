@@ -13,8 +13,17 @@ from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.providers.base import ProviderRegistry, ProviderResult, RedisCircuitBreaker
+from nkz_soil.providers.bgs import BgsProvider
 from nkz_soil.providers.cache import ProviderCache
+from nkz_soil.providers.esdb_raster import EsdbRasterProvider
+from nkz_soil.providers.eu_soil_hydro import EuSoilHydroGridsProvider
+from nkz_soil.providers.idena import IdenaProvider
+from nkz_soil.providers.igme import IgmeProvider
+from nkz_soil.providers.iot_sensor import IotSensorProvider
+from nkz_soil.providers.lab_analysis import LabAnalysisProvider
+from nkz_soil.providers.lucas import LucasProvider
 from nkz_soil.providers.metrics import metrics
+from nkz_soil.providers.soilgrids import SoilGridsProvider
 from nkz_soil.storage.orion import OrionClient
 
 STANDARD_DEPTHS = [
@@ -121,7 +130,14 @@ def build_agri_soil_extended(
 
 
 async def startup(ctx: dict) -> None:
-    ctx["registry"] = ProviderRegistry()
+    registry = ProviderRegistry()
+    for provider in (
+        LabAnalysisProvider(), IotSensorProvider(), IdenaProvider(), IgmeProvider(),
+        BgsProvider(), LucasProvider(), EsdbRasterProvider(),
+        EuSoilHydroGridsProvider(), SoilGridsProvider(),
+    ):
+        registry.register(provider)
+    ctx["registry"] = registry
     ctx["circuit_breaker"] = RedisCircuitBreaker(redis_url=REDIS_URL)
     ctx["cache"] = ProviderCache(redis_url=REDIS_URL)
 
@@ -145,6 +161,17 @@ async def ingest_parcel(
     registry: ProviderRegistry = ctx["registry"]
     circuit_breaker: RedisCircuitBreaker = ctx["circuit_breaker"]
     cache: ProviderCache = ctx["cache"]
+
+    # Geometry self-heal: the manual /ingest path enqueues an empty geometry.
+    # Resolve the parcel's footprint from Orion-LD so providers have something to sample.
+    if not geometry:
+        async with OrionClient(tenant_id) as orion:
+            parcels = await orion.query_entities(type="AgriParcel")
+            match = [e for e in parcels if e.get("id", "").endswith(parcel_id)]
+            if match:
+                geometry = match[0].get("location", {}).get("value", {})
+        if not geometry:
+            return {"status": "skipped", "reason": "no_geometry", "parcelId": parcel_id}
 
     all_results = []
     provider_results: list[ProviderResult] = []
