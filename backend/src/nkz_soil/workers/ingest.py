@@ -72,6 +72,8 @@ class EnrichedHorizon:
     hydrologic_group: str | None = None
     penetration_resistance: float | None = None
     relative_compaction: dict | None = None
+    emit: dict = None          # redistributable-safe raw values for serialization
+    provenance: dict = None    # attr -> {source, license, redistributable}
 
 
 def _winner_source_per_attr(merged_attrs: dict, results: list[ProviderResult]) -> dict[str, dict]:
@@ -228,25 +230,40 @@ async def ingest_parcel(
     return {"status": "ingested", "parcelId": parcel_id, "horizons": len(merged_horizons)}
 
 
+_MERGE_ATTRS = ["sand", "silt", "clay", "organic_carbon", "bulk_density",
+                "ph", "cec", "coarse_fragments", "penetration_resistance"]
+
+
 def _cascade_merge(results: list, depths: list[DepthInterval]) -> list[EnrichedHorizon]:
     merged: dict[str, dict] = {f"{d.depth_from}-{d.depth_to}": {} for d in depths}
-    for result in sorted(
-        results, key=lambda r: PROVIDER_PRIORITIES.get(r.provider, 0), reverse=True
-    ):
+    emit: dict[str, dict] = {k: {} for k in merged}
+    prov: dict[str, dict] = {k: {} for k in merged}
+
+    # Only SoilDataResult-shaped results participate (have .horizons + .priority).
+    sdr = [r for r in results if hasattr(r, "horizons") and hasattr(r, "priority")]
+    for result in sorted(sdr, key=lambda r: r.priority, reverse=True):
+        redistributable = getattr(result, "redistributable", True)
         for horizon in result.horizons:
             key = f"{horizon.depth_from}-{horizon.depth_to}"
-            if key in merged:
-                for attr in [
-                    "sand", "silt", "clay", "organic_carbon", "bulk_density",
-                    "ph", "cec", "coarse_fragments", "penetration_resistance",
-                ]:
-                    val = getattr(horizon, attr, None)
-                    if val is not None and attr not in merged[key]:
-                        merged[key][attr] = val
-    return [
-        EnrichedHorizon(depth_from=int(k.split("-")[0]), depth_to=int(k.split("-")[1]), **v)
-        for k, v in merged.items()
-    ]
+            if key not in merged:
+                continue
+            for attr in _MERGE_ATTRS:
+                val = getattr(horizon, attr, None)
+                if val is None:
+                    continue
+                if attr not in merged[key]:           # highest-priority winner (PTF input)
+                    merged[key][attr] = val
+                    prov[key][attr] = {"source": result.provider, "license": result.license,
+                                       "redistributable": redistributable}
+                if redistributable and attr not in emit[key]:   # best redistributable (emit)
+                    emit[key][attr] = val
+
+    out = []
+    for k, vals in merged.items():
+        df, dt = (int(x) for x in k.split("-"))
+        out.append(EnrichedHorizon(depth_from=df, depth_to=dt, emit=emit[k],
+                                   provenance=prov[k], **vals))
+    return out
 
 
 def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon]:
