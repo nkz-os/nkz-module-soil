@@ -13,22 +13,23 @@ from nkz_soil.workers.ingest import (
 from nkz_soil.models.domain import Horizon, SoilDataResult
 
 
-def make_result(provider, horizons, uncertainty=0.1):
+def make_result(provider, horizons, uncertainty=0.1, priority=0):
     return SoilDataResult(
         provider=provider,
         horizons=horizons,
         uncertainty=uncertainty,
         geometry={},
+        priority=priority,
     )
 
 
 def test_cascade_merge_high_priority_wins():
     high = make_result("lab_analysis", [
         Horizon(depth_from=0, depth_to=5, sand=50, silt=30, clay=20, ph=6.5),
-    ])
+    ], priority=100)
     low = make_result("soilgrids", [
         Horizon(depth_from=0, depth_to=5, sand=40, silt=40, clay=20, ph=7.0),
-    ])
+    ], priority=10)
 
     merged = _cascade_merge([low, high], STANDARD_DEPTHS)
     h0 = next(h for h in merged if h.depth_from == 0 and h.depth_to == 5)
@@ -40,11 +41,11 @@ def test_cascade_merge_high_priority_wins():
 def test_cascade_merge_gap_filling():
     partial = make_result("lab_analysis", [
         Horizon(depth_from=0, depth_to=5, sand=50),
-    ])
+    ], priority=100)
     full = make_result("soilgrids", [
         Horizon(depth_from=0, depth_to=5, sand=40, silt=40, clay=20),
         Horizon(depth_from=5, depth_to=15, sand=35, silt=45, clay=20),
-    ])
+    ], priority=10)
 
     merged = _cascade_merge([full, partial], STANDARD_DEPTHS)
     h0 = next(h for h in merged if h.depth_from == 0 and h.depth_to == 5)

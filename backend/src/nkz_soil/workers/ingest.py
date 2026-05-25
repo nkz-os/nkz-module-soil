@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from arq.connections import RedisSettings
 
 from nkz_soil.config import REDIS_URL
-from nkz_soil.models.domain import DepthInterval, SoilProperty
+from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
 from nkz_soil.pedotransfer.relative_compaction import relative_compaction
@@ -183,6 +183,10 @@ async def ingest_parcel(
 
         cached = await cache.get(provider.name, geometry, ALL_PROPERTIES, STANDARD_DEPTHS)
         if cached:
+            # The registry is the authority on cascade priority; stamp it onto
+            # the result so _cascade_merge can sort by result.priority.
+            if isinstance(cached, SoilDataResult):
+                cached.priority = provider.priority
             all_results.append(cached)
             if isinstance(cached, ProviderResult):
                 provider_results.append(cached)
@@ -194,6 +198,8 @@ async def ingest_parcel(
             start = time.monotonic()
             result = await provider.fetch(geometry, ALL_PROPERTIES, STANDARD_DEPTHS)
             duration_ms = (time.monotonic() - start) * 1000
+            if isinstance(result, SoilDataResult):
+                result.priority = provider.priority
             all_results.append(result)
             if isinstance(result, ProviderResult):
                 provider_results.append(result)
