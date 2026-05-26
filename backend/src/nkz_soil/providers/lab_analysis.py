@@ -9,7 +9,7 @@ from nkz_soil.models.domain import (
     Horizon,
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
-from nkz_soil.storage.orion import OrionClient
+from nkz_soil.storage.orion import OrionClient, current_tenant
 
 
 class LabAnalysisProvider:
@@ -27,7 +27,7 @@ class LabAnalysisProvider:
         properties: list[SoilProperty],
         depths: list[DepthInterval],
     ) -> SoilDataResult:
-        async with OrionClient() as orion:
+        async with OrionClient(current_tenant()) as orion:
             points = await orion.query_entities(
                 type="SoilSamplingPoint",
                 geometry=geometry,

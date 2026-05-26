@@ -11,7 +11,7 @@ from nkz_soil.models.domain import (
     Horizon,
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
-from nkz_soil.storage.orion import OrionClient
+from nkz_soil.storage.orion import OrionClient, current_tenant
 
 
 class IotSensorProvider:
@@ -41,7 +41,7 @@ class IotSensorProvider:
     ) -> SoilDataResult:
         requested_properties = {p.value for p in properties}
 
-        async with OrionClient() as orion:
+        async with OrionClient(current_tenant()) as orion:
             devices = await orion.query_entities(
                 type="Device",
                 category=self.DEVICE_CATEGORIES,
