@@ -16,7 +16,9 @@ spec:
       containers:
         - name: worker
           image: ghcr.io/nkz-os/nkz-module-soil/soil-worker:latest
-          imagePullPolicy: IfNotPresent
+          # Always: with the :latest tag, IfNotPresent serves a stale cached image
+          # on rollout restart, so the worker would keep running old cascade code.
+          imagePullPolicy: Always
           envFrom:
             - configMapRef:
                 name: soil-module-config
