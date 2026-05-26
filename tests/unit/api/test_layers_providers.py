@@ -29,7 +29,10 @@ def test_provider_health(client):
     assert resp.status_code == 200
     data = resp.json()
     assert "providers" in data
-    assert len(data["providers"]) == 8
+    # 10 providers: lab, iot, idena, igme, bgs, LUCAS, LUCAS-Texture, ESDB-Raster, eu_soil_hydro, soilgrids
+    assert len(data["providers"]) == 10
+    names = {p["name"] for p in data["providers"]}
+    assert {"LUCAS-Texture", "ESDB-Raster"} <= names
 
 
 def test_provider_coverage(client):

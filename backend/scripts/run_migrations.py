@@ -14,6 +14,7 @@ from nkz_soil.ingest.lucas_aux_loader import (
     load_lucas_bulk_density, load_lucas_erosion, load_lucas_organic,
 )
 from nkz_soil.ingest.esdb_raster_loader import catalog_esdb_rasters
+from nkz_soil.ingest.lucas_texture_loader import catalog_lucas_texture
 
 MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
 RAW_BUCKET = os.environ.get("MINIO_RAW_BUCKET", "nekazari-soil-raw")
@@ -53,6 +54,12 @@ async def _bulk_load():
     # already on soil_module.lucas_topsoil_2018 and migration 007 backfills
     # lucas_texture_all from it.
     print(f"[catalog] ESDB rasters = {await catalog_esdb_rasters(bucket=RAW_BUCKET, prefix='esdb/')}", flush=True)
+    # Restricted JRC LUCAS texture rasters live in a separate private bucket and
+    # are absent in environments without the licensed data; skip cleanly if so.
+    try:
+        print(f"[catalog] LUCAS texture = {await catalog_lucas_texture()}", flush=True)
+    except Exception as e:  # noqa: BLE001 - idempotent best-effort catalog
+        print(f"[catalog] LUCAS texture skipped: {e}", flush=True)
 
 
 async def main():

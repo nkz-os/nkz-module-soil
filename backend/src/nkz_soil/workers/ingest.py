@@ -6,15 +6,26 @@ from dataclasses import dataclass
 from arq.connections import RedisSettings
 
 from nkz_soil.config import REDIS_URL
-from nkz_soil.models.domain import DepthInterval, SoilProperty
+from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
 from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
+from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.providers.base import ProviderRegistry, ProviderResult, RedisCircuitBreaker
+from nkz_soil.providers.bgs import BgsProvider
 from nkz_soil.providers.cache import ProviderCache
+from nkz_soil.providers.esdb_raster import EsdbRasterProvider
+from nkz_soil.providers.eu_soil_hydro import EuSoilHydroGridsProvider
+from nkz_soil.providers.idena import IdenaProvider
+from nkz_soil.providers.igme import IgmeProvider
+from nkz_soil.providers.iot_sensor import IotSensorProvider
+from nkz_soil.providers.lab_analysis import LabAnalysisProvider
+from nkz_soil.providers.lucas import LucasProvider
+from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.metrics import metrics
+from nkz_soil.providers.soilgrids import SoilGridsProvider
 from nkz_soil.storage.orion import OrionClient
 
 STANDARD_DEPTHS = [
@@ -69,9 +80,14 @@ class EnrichedHorizon:
     coarse_fragments: float | None = None
     ksat_saturated: float | None = None
     available_water_capacity: float | None = None
+    field_capacity: float | None = None
+    wilting_point: float | None = None
+    usda_texture_class: str | None = None
     hydrologic_group: str | None = None
     penetration_resistance: float | None = None
     relative_compaction: dict | None = None
+    emit: dict = None          # redistributable-safe raw values for serialization
+    provenance: dict = None    # attr -> {source, license, redistributable}
 
 
 def _winner_source_per_attr(merged_attrs: dict, results: list[ProviderResult]) -> dict[str, dict]:
@@ -116,7 +132,14 @@ def build_agri_soil_extended(
 
 
 async def startup(ctx: dict) -> None:
-    ctx["registry"] = ProviderRegistry()
+    registry = ProviderRegistry()
+    for provider in (
+        LabAnalysisProvider(), IotSensorProvider(), IdenaProvider(), IgmeProvider(),
+        BgsProvider(), LucasProvider(), LucasTextureRasterProvider(), EsdbRasterProvider(),
+        EuSoilHydroGridsProvider(), SoilGridsProvider(),
+    ):
+        registry.register(provider)
+    ctx["registry"] = registry
     ctx["circuit_breaker"] = RedisCircuitBreaker(redis_url=REDIS_URL)
     ctx["cache"] = ProviderCache(redis_url=REDIS_URL)
 
@@ -141,6 +164,17 @@ async def ingest_parcel(
     circuit_breaker: RedisCircuitBreaker = ctx["circuit_breaker"]
     cache: ProviderCache = ctx["cache"]
 
+    # Geometry self-heal: the manual /ingest path enqueues an empty geometry.
+    # Resolve the parcel's footprint from Orion-LD so providers have something to sample.
+    if not geometry:
+        async with OrionClient(tenant_id) as orion:
+            parcels = await orion.query_entities(type="AgriParcel")
+            match = [e for e in parcels if e.get("id", "").endswith(parcel_id)]
+            if match:
+                geometry = match[0].get("location", {}).get("value", {})
+        if not geometry:
+            return {"status": "skipped", "reason": "no_geometry", "parcelId": parcel_id}
+
     all_results = []
     provider_results: list[ProviderResult] = []
     for provider in registry.get_all():
@@ -151,6 +185,10 @@ async def ingest_parcel(
 
         cached = await cache.get(provider.name, geometry, ALL_PROPERTIES, STANDARD_DEPTHS)
         if cached:
+            # The registry is the authority on cascade priority; stamp it onto
+            # the result so _cascade_merge can sort by result.priority.
+            if isinstance(cached, SoilDataResult):
+                cached.priority = provider.priority
             all_results.append(cached)
             if isinstance(cached, ProviderResult):
                 provider_results.append(cached)
@@ -162,6 +200,8 @@ async def ingest_parcel(
             start = time.monotonic()
             result = await provider.fetch(geometry, ALL_PROPERTIES, STANDARD_DEPTHS)
             duration_ms = (time.monotonic() - start) * 1000
+            if isinstance(result, SoilDataResult):
+                result.priority = provider.priority
             all_results.append(result)
             if isinstance(result, ProviderResult):
                 provider_results.append(result)
@@ -228,25 +268,40 @@ async def ingest_parcel(
     return {"status": "ingested", "parcelId": parcel_id, "horizons": len(merged_horizons)}
 
 
+_MERGE_ATTRS = ["sand", "silt", "clay", "organic_carbon", "bulk_density",
+                "ph", "cec", "coarse_fragments", "penetration_resistance"]
+
+
 def _cascade_merge(results: list, depths: list[DepthInterval]) -> list[EnrichedHorizon]:
     merged: dict[str, dict] = {f"{d.depth_from}-{d.depth_to}": {} for d in depths}
-    for result in sorted(
-        results, key=lambda r: PROVIDER_PRIORITIES.get(r.provider, 0), reverse=True
-    ):
+    emit: dict[str, dict] = {k: {} for k in merged}
+    prov: dict[str, dict] = {k: {} for k in merged}
+
+    # Only SoilDataResult-shaped results participate (have .horizons + .priority).
+    sdr = [r for r in results if hasattr(r, "horizons") and hasattr(r, "priority")]
+    for result in sorted(sdr, key=lambda r: r.priority, reverse=True):
+        redistributable = getattr(result, "redistributable", True)
         for horizon in result.horizons:
             key = f"{horizon.depth_from}-{horizon.depth_to}"
-            if key in merged:
-                for attr in [
-                    "sand", "silt", "clay", "organic_carbon", "bulk_density",
-                    "ph", "cec", "coarse_fragments", "penetration_resistance",
-                ]:
-                    val = getattr(horizon, attr, None)
-                    if val is not None and attr not in merged[key]:
-                        merged[key][attr] = val
-    return [
-        EnrichedHorizon(depth_from=int(k.split("-")[0]), depth_to=int(k.split("-")[1]), **v)
-        for k, v in merged.items()
-    ]
+            if key not in merged:
+                continue
+            for attr in _MERGE_ATTRS:
+                val = getattr(horizon, attr, None)
+                if val is None:
+                    continue
+                if attr not in merged[key]:           # highest-priority winner (PTF input)
+                    merged[key][attr] = val
+                    prov[key][attr] = {"source": result.provider, "license": result.license,
+                                       "redistributable": redistributable}
+                if redistributable and attr not in emit[key]:   # best redistributable (emit)
+                    emit[key][attr] = val
+
+    out = []
+    for k, vals in merged.items():
+        df, dt = (int(x) for x in k.split("-"))
+        out.append(EnrichedHorizon(depth_from=df, depth_to=dt, emit=emit[k],
+                                   provenance=prov[k], **vals))
+    return out
 
 
 def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon]:
@@ -257,6 +312,8 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
             h.available_water_capacity = awc_from_horizons(
                 ptf["field_capacity"], ptf["wilting_point"]
             )
+            h.field_capacity = ptf["field_capacity"]
+            h.wilting_point = ptf["wilting_point"]
             h.hydrologic_group = scs_hydrologic_group(ptf["ksat"])
 
         if (
@@ -269,25 +326,46 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
                 h.bulk_density, h.sand, h.silt, h.clay
             )
 
+        if h.sand is not None and h.silt is not None and h.clay is not None:
+            h.usda_texture_class = usda_texture_class(h.sand, h.silt, h.clay)
+
     return horizons
+
+
+def _emit_raw(h: EnrichedHorizon, attr: str):
+    """Emit the redistributable-safe value: only if a redistributable source supplied it.
+
+    License boundary: a raw fraction whose only/winning source is non-redistributable
+    (e.g. JRC LUCAS texture) is withheld here, even though it was used for pedotransfer.
+    """
+    if h.emit is not None and attr in h.emit:
+        return h.emit[attr]
+    # No provenance recorded (e.g. direct lab input) -> treat as emittable.
+    if h.provenance is None or attr not in h.provenance:
+        return getattr(h, attr, None)
+    return None
 
 
 def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
     return {
         "depthFrom": horizon.depth_from,
         "depthTo": horizon.depth_to,
-        "sand": horizon.sand,
-        "silt": horizon.silt,
-        "clay": horizon.clay,
-        "organicCarbon": horizon.organic_carbon,
-        "bulkDensity": horizon.bulk_density,
-        "ph": horizon.ph,
-        "cec": horizon.cec,
-        "coarseFragments": horizon.coarse_fragments,
+        "sand": _emit_raw(horizon, "sand"),
+        "silt": _emit_raw(horizon, "silt"),
+        "clay": _emit_raw(horizon, "clay"),
+        "organicCarbon": _emit_raw(horizon, "organic_carbon"),
+        "bulkDensity": _emit_raw(horizon, "bulk_density"),
+        "ph": _emit_raw(horizon, "ph"),
+        "cec": _emit_raw(horizon, "cec"),
+        "coarseFragments": _emit_raw(horizon, "coarse_fragments"),
+        "penetrationResistance": _emit_raw(horizon, "penetration_resistance"),
+        # Derived products — always emitted (new works under the license).
         "ksatSaturated": horizon.ksat_saturated,
         "availableWaterCapacity": horizon.available_water_capacity,
+        "fieldCapacity": horizon.field_capacity,
+        "wiltingPoint": horizon.wilting_point,
         "hydrologicGroup": horizon.hydrologic_group,
-        "penetrationResistance": horizon.penetration_resistance,
+        "usdaTextureClass": horizon.usda_texture_class,
     }
 
 

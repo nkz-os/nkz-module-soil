@@ -44,7 +44,9 @@ def pg_dsn():
             try:
                 await conn.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
                 root = Path(__file__).resolve().parents[2] / "backend" / "migrations"
-                for m in sorted(root.glob("00[1234]_*.sql")):
+                # Apply the full migration set in order so the test schema matches
+                # production (e.g. migration 006 realigns the aux tables).
+                for m in sorted(root.glob("[0-9][0-9][0-9]_*.sql")):
                     await conn.execute(m.read_text())
             finally:
                 await conn.close()

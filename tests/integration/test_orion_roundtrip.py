@@ -19,9 +19,20 @@ ORION_URL = os.environ.get("ORION_BASE_URL")
 CONTEXT_URL = os.environ.get("CONTEXT_URL")
 REDIS_URL = os.environ.get("REDIS_URL")
 
+# The OrionClient wrapper delegates to nkz_platform_sdk's OrionClient as an async
+# context manager. Older locally-installed SDK builds lack __aenter__, so these
+# integration tests cannot run without (a) a live Orion-LD broker AND (b) an SDK
+# new enough to support the async CM. Skip cleanly otherwise (CI only runs unit).
+try:
+    from nkz_platform_sdk import OrionClient as _SDKOrion
+    _SDK_ASYNC_CM = hasattr(_SDKOrion, "__aenter__")
+except Exception:  # noqa: BLE001 - SDK absent => skip
+    _SDK_ASYNC_CM = False
+
 pytestmark = pytest.mark.skipif(
-    not (ORION_URL and CONTEXT_URL),
-    reason="Integration tests require ORION_BASE_URL and CONTEXT_URL env vars",
+    not (ORION_URL and CONTEXT_URL) or not _SDK_ASYNC_CM,
+    reason="Integration tests require a live Orion-LD broker (ORION_BASE_URL/CONTEXT_URL) "
+    "and an nkz-platform-sdk with async context-manager support",
 )
 
 

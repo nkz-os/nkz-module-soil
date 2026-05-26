@@ -13,12 +13,14 @@ from nkz_soil.api.routes.subscriptions import router as subscriptions_router
 from nkz_soil.api.routes.writing import router as writing_router
 from nkz_soil.providers.base import ProviderRegistry
 from nkz_soil.providers.bgs import BgsProvider
+from nkz_soil.providers.esdb_raster import EsdbRasterProvider
 from nkz_soil.providers.eu_soil_hydro import EuSoilHydroGridsProvider
 from nkz_soil.providers.idena import IdenaProvider
 from nkz_soil.providers.igme import IgmeProvider
 from nkz_soil.providers.iot_sensor import IotSensorProvider
 from nkz_soil.providers.lab_analysis import LabAnalysisProvider
 from nkz_soil.providers.lucas import LucasProvider
+from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.soilgrids import SoilGridsProvider
 
 
@@ -30,6 +32,8 @@ def create_app() -> FastAPI:
     registry.register(IgmeProvider())
     registry.register(BgsProvider())
     registry.register(LucasProvider())
+    registry.register(LucasTextureRasterProvider())
+    registry.register(EsdbRasterProvider())
     registry.register(EuSoilHydroGridsProvider())
     registry.register(SoilGridsProvider())
     set_registry(registry)

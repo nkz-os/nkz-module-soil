@@ -55,6 +55,9 @@ def _serialize_result(result: SoilDataResult) -> dict[str, Any]:
         "uncertainty": result.uncertainty,
         "geometry": result.geometry,
         "attribution": result.attribution,
+        "license": result.license,
+        "redistributable": result.redistributable,
+        "priority": result.priority,
     }
 
 
@@ -86,6 +89,9 @@ def _deserialize_result(data: dict[str, Any]) -> SoilDataResult:
         uncertainty=data["uncertainty"],
         geometry=data["geometry"],
         attribution=data.get("attribution"),
+        license=data.get("license"),
+        redistributable=data.get("redistributable", True),
+        priority=data.get("priority", 0),
     )
 
 

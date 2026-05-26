@@ -40,11 +40,13 @@ publishes:
         spatial: polygon-aggregated
         sources: [LUCAS-BD, lab]
         entitlement: open
+      # LUCAS-Texture (JRC, no-redistribution) contributes ONLY to derived outputs;
+      # its raw fractions are suppressed at entity emission (never served).
       - name: availableWaterCapacity
         unitCode: H51
         temporal: static
         spatial: polygon-aggregated
-        sources: [derived-from:clayContent,sandContent,bulkDensity,organicCarbon]
+        sources: [derived-from:clayContent,sandContent,bulkDensity,organicCarbon, LUCAS-Texture]
         pedotransfer: SaxtonRawls2006
         entitlement: open
         confidence: derived
@@ -52,21 +54,21 @@ publishes:
         unitCode: H51
         temporal: static
         spatial: polygon-aggregated
-        sources: [derived-from:clayContent,sandContent,organicCarbon]
+        sources: [derived-from:clayContent,sandContent,organicCarbon, LUCAS-Texture]
         pedotransfer: SaxtonRawls2006
         entitlement: open
       - name: wiltingPoint
         unitCode: H51
         temporal: static
         spatial: polygon-aggregated
-        sources: [derived-from:clayContent,sandContent,organicCarbon]
+        sources: [derived-from:clayContent,sandContent,organicCarbon, LUCAS-Texture]
         pedotransfer: SaxtonRawls2006
         entitlement: open
       - name: saturatedHydraulicConductivity
         unitCode: F61
         temporal: static
         spatial: polygon-aggregated
-        sources: [derived-from:clayContent,sandContent,bulkDensity]
+        sources: [derived-from:clayContent,sandContent,bulkDensity, LUCAS-Texture]
         pedotransfer: SaxtonRawls2006
         entitlement: open
       - name: hydrologicGroup
@@ -88,6 +90,14 @@ publishes:
         spatial: polygon-aggregated
         sources: [LUCAS, lab]
         entitlement: open
+      - name: usdaTextureClass
+        unitCode: null
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [derived-from:clayContent,sandContent,siltContent]
+        pedotransfer: USDA-triangle
+        entitlement: open
+        confidence: derived
 
   - entityType: SoilSamplingPoint
     sdmStatus: draft-proposal

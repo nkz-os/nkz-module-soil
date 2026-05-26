@@ -7,7 +7,7 @@ import os
 from nkz_soil.ingest.lucas_loader import load_lucas_topsoil
 from nkz_soil.ingest.lucas_aux_loader import (
     load_lucas_bulk_density, load_lucas_erosion,
-    load_lucas_organic, load_lucas_texture,
+    load_lucas_organic,
 )
 from nkz_soil.storage import pg as pg_module
 
@@ -25,8 +25,6 @@ def test_aux_loaders_insert_three_rows_each(pg_dsn):
     assert _run(load_lucas_erosion(FIX / "lucas_erosion_sample.csv")) == 3
     pg_module._POOL = None
     assert _run(load_lucas_organic(FIX / "lucas_organic_sample.csv")) == 3
-    pg_module._POOL = None
-    assert _run(load_lucas_texture(FIX / "lucas_texture_sample.csv")) == 3
 
 
 def test_aux_loaders_idempotent(pg_dsn):
@@ -37,7 +35,6 @@ def test_aux_loaders_idempotent(pg_dsn):
             (load_lucas_bulk_density, "lucas_bd_sample.csv"),
             (load_lucas_erosion, "lucas_erosion_sample.csv"),
             (load_lucas_organic, "lucas_organic_sample.csv"),
-            (load_lucas_texture, "lucas_texture_sample.csv"),
         ]:
             pg_module._POOL = None
             _run(fn(FIX / fname))
@@ -49,9 +46,8 @@ def test_aux_loaders_idempotent(pg_dsn):
                 "bd": await conn.fetchval("SELECT COUNT(*) FROM soil_module.lucas_bulk_density_2018"),
                 "ero": await conn.fetchval("SELECT COUNT(*) FROM soil_module.lucas_erosion_2018"),
                 "org": await conn.fetchval("SELECT COUNT(*) FROM soil_module.lucas_organic_2018"),
-                "tex": await conn.fetchval("SELECT COUNT(*) FROM soil_module.lucas_texture_all"),
             }
         finally:
             await conn.close()
     counts = _run(_counts())
-    assert counts == {"bd": 3, "ero": 3, "org": 3, "tex": 3}
+    assert counts == {"bd": 3, "ero": 3, "org": 3}
