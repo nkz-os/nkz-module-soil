@@ -20,6 +20,8 @@ export const i18n = {
         scope: { selected: 'Parcela', all: 'Todas' },
         attr: { usdaTextureClass: 'Clase de textura', hydrologicGroup: 'Grupo hidrológico',
                 availableWaterCapacity: 'Agua disponible', ksatSaturated: 'Conductividad (Ksat)' },
+        status: { loading: 'Cargando…', empty: 'Sin datos de suelo para esta selección',
+                  error: 'Error al cargar la capa', noSelection: 'Selecciona una parcela' },
       },
       tabs: {
         dashboard: 'Panel',
@@ -110,6 +112,8 @@ export const i18n = {
         scope: { selected: 'Parcel', all: 'All' },
         attr: { usdaTextureClass: 'Texture class', hydrologicGroup: 'Hydrologic group',
                 availableWaterCapacity: 'Available water', ksatSaturated: 'Conductivity (Ksat)' },
+        status: { loading: 'Loading…', empty: 'No soil data for this selection',
+                  error: 'Failed to load layer', noSelection: 'Select a parcel' },
       },
       tabs: {
         dashboard: 'Dashboard',

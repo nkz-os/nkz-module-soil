@@ -42,3 +42,25 @@ export function soilLayerColor(attribute: string, value: string | number | null)
   const i = Math.min(RAMP.length - 2, Math.floor(seg));
   return lerpHex(RAMP[i], RAMP[i + 1], seg - i);
 }
+
+// USDA texture classes (kebab slugs from backend usda_texture.py) + hydrologic groups,
+// kept here so the legend can enumerate them without re-deriving colors.
+export const USDA_TEXTURE_CLASSES = [
+  'sand', 'loamy-sand', 'sandy-loam', 'loam', 'silt-loam', 'silt',
+  'sandy-clay-loam', 'clay-loam', 'silty-clay-loam', 'sandy-clay', 'silty-clay', 'clay',
+];
+export const HYDROLOGIC_GROUPS = ['A', 'B', 'C', 'D'];
+
+export type Legend =
+  | { kind: 'categorical'; entries: { value: string; color: string }[] }
+  | { kind: 'continuous'; colors: string[]; range: [number, number]; unit?: string };
+
+/** Legend descriptor for an attribute — reuses soilLayerColor/RAMP so map and legend never drift. */
+export function legendFor(attribute: string): Legend {
+  const attr = LAYER_ATTRIBUTES.find(a => a.id === attribute);
+  if (attr?.kind === 'continuous') {
+    return { kind: 'continuous', colors: RAMP, range: attr.range ?? [0, 1], unit: attr.unit };
+  }
+  const values = attribute === 'hydrologicGroup' ? HYDROLOGIC_GROUPS : USDA_TEXTURE_CLASSES;
+  return { kind: 'categorical', entries: values.map(v => ({ value: v, color: soilLayerColor(attribute, v) })) };
+}

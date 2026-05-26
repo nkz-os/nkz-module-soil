@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { soilLayerColor, LAYER_ATTRIBUTES } from './soilLayerColor';
+import { soilLayerColor, LAYER_ATTRIBUTES, legendFor } from './soilLayerColor';
 
 describe('soilLayerColor', () => {
   it('lists only derived attributes', () => {
@@ -20,5 +20,32 @@ describe('soilLayerColor', () => {
   });
   it('returns a neutral grey for null', () => {
     expect(soilLayerColor('availableWaterCapacity', null)).toBe('#cccccc');
+  });
+});
+
+describe('legendFor', () => {
+  it('returns categorical entries with colors for usdaTextureClass', () => {
+    const lg = legendFor('usdaTextureClass');
+    expect(lg.kind).toBe('categorical');
+    if (lg.kind === 'categorical') {
+      expect(lg.entries.length).toBe(12);
+      expect(lg.entries.find(e => e.value === 'loam')?.color).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
+  });
+  it('returns A–D groups for hydrologicGroup', () => {
+    const lg = legendFor('hydrologicGroup');
+    expect(lg.kind).toBe('categorical');
+    if (lg.kind === 'categorical') {
+      expect(lg.entries.map(e => e.value)).toEqual(['A', 'B', 'C', 'D']);
+    }
+  });
+  it('returns a continuous ramp + range for AWC', () => {
+    const lg = legendFor('availableWaterCapacity');
+    expect(lg.kind).toBe('continuous');
+    if (lg.kind === 'continuous') {
+      expect(lg.colors.length).toBeGreaterThan(1);
+      expect(lg.range).toEqual([0.05, 0.25]);
+      expect(lg.unit).toBe('m³/m³');
+    }
   });
 });
