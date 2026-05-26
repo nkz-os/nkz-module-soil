@@ -25,6 +25,13 @@ spec:
             - secretRef:
                 name: soil-module-secret
           env:
+            # pg-dsn has a hyphen, so envFrom secretRef cannot expose it as an env
+            # var (invalid name) — map it explicitly. The worker cascade needs it.
+            - name: SOIL_PG_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: soil-module-secret
+                  key: pg-dsn
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
