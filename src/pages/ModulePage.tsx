@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SlotShellCompact } from '@nekazari/viewer-kit';
 import { useSearchParams } from 'react-router-dom';
-import { useSoilApi, LayerInfo } from '../hooks/useSoilApi';
+import { useSoilApi } from '../hooks/useSoilApi';
 import { useEntities } from '@nekazari/module-kit';
 
 type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
@@ -364,9 +364,6 @@ function DashboardTab() {
             </div>
           )}
 
-          {/* Raster Viewer */}
-          <RasterViewer parcelId={selectedParcel} />
-
           {/* Attribution */}
           <div className="mt-4 pt-4 border-t border-nkz-border text-nkz-xs text-nkz-muted">
             {t('source')}: {summary.dataSource?.value || '—'}
@@ -390,69 +387,6 @@ function compactionColor(classification: string): string {
     case 'severe': return 'text-nkz-danger';
     default: return 'text-nkz-muted';
   }
-}
-
-// ─── Raster Viewer Component ─────────────────────────────────────────────
-
-function RasterViewer({ parcelId }: { parcelId: string }) {
-  const { t } = useTranslation('soil');
-  const api = useSoilApi();
-  const [manifest, setManifest] = useState<LayerInfo[] | null>(null);
-  const [selectedLayer, setSelectedLayer] = useState<string>('');
-  const [rasterUrl, setRasterUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    api.getLayerManifest().then((data) => {
-      if (data.layers && data.layers.length > 0) {
-        setManifest(data.layers);
-        setSelectedLayer(data.layers[0].id);
-      }
-    }).catch(console.error);
-  }, [api]);
-
-  useEffect(() => {
-    if (parcelId && selectedLayer) {
-      setLoading(true);
-      const property = selectedLayer.replace('soil-', '');
-      api.getRaster(parcelId, property)
-        .then((data) => setRasterUrl(data.url))
-        .catch(() => setRasterUrl(null))
-        .finally(() => setLoading(false));
-    } else {
-      setRasterUrl(null);
-    }
-  }, [parcelId, selectedLayer, api]);
-
-  if (!manifest || manifest.length === 0) return null;
-
-  return (
-    <div className="mt-6 pt-6 border-t border-nkz-border">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-nkz-sm font-medium">{t('dashboard.rasterMap', 'Raster Map')}</h3>
-        <select
-          value={selectedLayer}
-          onChange={(e) => setSelectedLayer(e.target.value)}
-          className="text-nkz-xs border-nkz-border rounded-nkz-sm p-1 bg-transparent"
-        >
-          {manifest.map((layer) => (
-            <option key={layer.id} value={layer.id}>
-              {layer.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="bg-nkz-muted/5 rounded-nkz-md aspect-video flex items-center justify-center overflow-hidden border border-nkz-border relative">
-        {loading ? (
-          <span className="text-nkz-xs text-nkz-muted">{t('loading')}</span>
-        ) : rasterUrl ? (
-          <img src={rasterUrl} alt="Soil raster" className="w-full h-full object-cover" />
-        ) : (
-          <span className="text-nkz-xs text-nkz-muted">{t('dashboard.noRaster', 'No raster available for this property')}</span>
-        )}
-      </div>
-    </div>
-  );
 }
 
 // ─── Manual Sampling Tab ─────────────────────────────────────────────────

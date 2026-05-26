@@ -1,7 +1,9 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from nkz_soil.api.dependencies import get_tenant_id
+from nkz_soil.api.geojson import is_allowed_attribute, build_parcel_featurecollection
 from nkz_soil.api.limiter import limiter
 from nkz_soil.storage.orion import OrionClient
 
@@ -89,6 +91,24 @@ MANIFEST = {
 @limiter.exempt
 async def layers_manifest():
     return MANIFEST
+
+
+@router.get("/layers/parcels.geojson")
+@limiter.exempt
+async def parcels_geojson(
+    attribute: str,
+    scope: str = "all",
+    parcel: str | None = None,
+    tenant_id: str = Depends(get_tenant_id),
+):
+    if not is_allowed_attribute(attribute):
+        raise HTTPException(status_code=400, detail=f"attribute '{attribute}' is not a servable layer")
+    async with OrionClient(tenant_id) as orion:
+        entities = await orion.query_entities(type="AgriSoilExtended")
+    if scope == "selected" and parcel:
+        entities = [e for e in entities
+                    if e.get("refAgriParcel", {}).get("object", "").endswith(parcel)]
+    return build_parcel_featurecollection(entities, attribute)
 
 
 @router.get("/layers/{layer_id}/render")

@@ -184,6 +184,10 @@ This module integrates data from multiple sources. When displaying results, incl
 | LUCAS | European Commission, JRC, LUCAS Topsoil Survey |
 | EU-SoilHydroGrids | JRC ESDAC (non-commercial use only) |
 
+## Roadmap
+
+Planned enhancements and known limitations are tracked in [ROADMAP.md](ROADMAP.md).
+
 ## License
 
 Apache 2.0 — See [LICENSE](LICENSE)

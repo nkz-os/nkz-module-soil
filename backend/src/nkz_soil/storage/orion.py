@@ -1,9 +1,21 @@
+import contextvars
+
 try:
     from nkz_platform_sdk import OrionClient as SDKOrionClient
 except ImportError:
     SDKOrionClient = None
 
 from nkz_soil.config import CONTEXT_URL
+
+_TENANT: contextvars.ContextVar[str | None] = contextvars.ContextVar("soil_tenant", default=None)
+
+
+def set_current_tenant(tenant_id: str | None):
+    return _TENANT.set(tenant_id)
+
+
+def current_tenant() -> str | None:
+    return _TENANT.get()
 
 
 class OrionClient:

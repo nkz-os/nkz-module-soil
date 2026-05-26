@@ -25,18 +25,6 @@ interface SoilSummary {
   }>;
 }
 
-export interface LayerInfo {
-  id: string;
-  label: string;
-  category: string;
-  type: 'categorical' | 'continuous';
-  values?: string[];
-  range?: number[];
-  unit: string | null;
-  colorRamp: string | string[];
-  depths: string[];
-}
-
 export function useSoilApi() {
   const api = useAPI();
 
@@ -49,13 +37,11 @@ export function useSoilApi() {
         `/v1/soil/parcel/${parcelId}/horizons?depth=${depth}`
       ),
 
-    getRaster: (parcelId: string, property: string, depth = '0-30') =>
-      api.get<{ url: string }>(
-        `/v1/soil/parcel/${parcelId}/raster?property=${property}&depth=${depth}`
+    getParcelsGeoJson: (attribute: string, scope: 'selected' | 'all', parcel?: string) =>
+      api.get<{ type: string; features: Array<{ geometry: unknown; properties: Record<string, unknown> }> }>(
+        `/v1/soil/layers/parcels.geojson?attribute=${encodeURIComponent(attribute)}` +
+        `&scope=${scope}` + (parcel ? `&parcel=${encodeURIComponent(parcel)}` : '')
       ),
-
-    getLayerManifest: () =>
-      api.get<{ layers: LayerInfo[] }>('/v1/soil/layers/manifest'),
 
     uploadSamplingPoint: (data: Record<string, unknown>) =>
       api.post('/v1/soil/sampling-points', data),

@@ -1,5 +1,5 @@
-import { defineModule } from '@nekazari/module-kit';
-import * as slots from './slots';
+import { defineModule, withModuleProvider } from '@nekazari/module-kit';
+import { moduleSlots } from './slots';
 import ModulePage from './pages/ModulePage';
 import { i18n } from './i18n';
 
@@ -21,10 +21,7 @@ export default defineModule({
     section: 'modules',
     priority: 40,
   },
-  slots: {
-    'context-panel': [slots.contextPanel],
-    'provider-health-panel': [slots.providerHealthPanel],
-  },
+  slots: withModuleProvider(moduleSlots as never) as never,
   api: { basePath: '/api/v1/soil' },
   requiredRoles: ['GestorAgricola', 'Administrador'],
   requiredPlan: 'pro',

@@ -160,6 +160,9 @@ async def ingest_parcel(
     geometry: dict,
     parcel_version_id: str,
 ) -> dict:
+    from nkz_soil.storage.orion import set_current_tenant
+    set_current_tenant(tenant_id)
+
     registry: ProviderRegistry = ctx["registry"]
     circuit_breaker: RedisCircuitBreaker = ctx["circuit_breaker"]
     cache: ProviderCache = ctx["cache"]
