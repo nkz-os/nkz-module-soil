@@ -25,6 +25,13 @@ spec:
             - secretRef:
                 name: soil-module-secret
           env:
+            # pg-dsn has a hyphen, so envFrom secretRef cannot expose it as an env
+            # var (invalid name) — map it explicitly. PG-backed provider health needs it.
+            - name: SOIL_PG_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: soil-module-secret
+                  key: pg-dsn
             - name: ORION_BASE_URL
               value: "http://orion-ld-service:1026"
             - name: MINIO_ENDPOINT
