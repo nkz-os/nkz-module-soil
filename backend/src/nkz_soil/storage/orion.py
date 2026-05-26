@@ -32,11 +32,10 @@ class OrionClient:
         self._client = SDKOrionClient(tenant_id=tenant_id)
 
     async def __aenter__(self):
-        await self._client.__aenter__()
         return self
 
     async def __aexit__(self, *args):
-        await self._client.__aexit__(*args)
+        await self._client.close()
 
     async def query_entities(
         self,
