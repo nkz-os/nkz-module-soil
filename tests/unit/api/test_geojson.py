@@ -1,6 +1,5 @@
-import pytest
 from nkz_soil.api.geojson import (
-    ALLOWED_LAYER_ATTRS, is_allowed_attribute, build_parcel_featurecollection,
+    is_allowed_attribute, build_parcel_featurecollection,
 )
 
 

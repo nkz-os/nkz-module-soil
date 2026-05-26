@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 
 from nkz_soil.api.dependencies import get_tenant_id
 from nkz_soil.api.geojson import is_allowed_attribute, build_parcel_featurecollection
