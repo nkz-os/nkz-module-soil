@@ -15,6 +15,12 @@ export const i18n = {
       loading: 'Cargando…',
       awc: 'Capacidad de agua disponible',
       uncertainty: 'Incertidumbre',
+      layer: {
+        title: 'Suelo',
+        scope: { selected: 'Parcela', all: 'Todas' },
+        attr: { usdaTextureClass: 'Clase de textura', hydrologicGroup: 'Grupo hidrológico',
+                availableWaterCapacity: 'Agua disponible', ksatSaturated: 'Conductividad (Ksat)' },
+      },
       tabs: {
         dashboard: 'Panel',
         manual: 'Muestreo manual',
@@ -99,6 +105,12 @@ export const i18n = {
       loading: 'Loading…',
       awc: 'Available Water Capacity',
       uncertainty: 'Uncertainty',
+      layer: {
+        title: 'Soil',
+        scope: { selected: 'Parcel', all: 'All' },
+        attr: { usdaTextureClass: 'Texture class', hydrologicGroup: 'Hydrologic group',
+                availableWaterCapacity: 'Available water', ksatSaturated: 'Conductivity (Ksat)' },
+      },
       tabs: {
         dashboard: 'Dashboard',
         manual: 'Manual Sampling',
