@@ -77,6 +77,8 @@ class OrionClient:
             f"{ORION_LD_URL}/ngsi-ld/v1/entities{query}",
             headers=self._headers("application/json"),
         )
+        if resp.status_code == 404:
+            return []
         resp.raise_for_status()
         return resp.json()
 
