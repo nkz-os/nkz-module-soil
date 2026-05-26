@@ -64,6 +64,12 @@ export function SoilPanel({ entityId }: { entityId?: string }) {
                   : '\u2014'}
               </span>
             </div>
+            {horizon.usdaTextureClass != null && (
+              <div className="flex justify-between">
+                <span>{t('textureClass', 'Texture class')}:</span>
+                <span className="font-medium">{String(horizon.usdaTextureClass)}</span>
+              </div>
+            )}
             {horizon.hydrologicGroup != null && (
               <div className="flex justify-between">
                 <span>{t('hydrologicGroup')}:</span>

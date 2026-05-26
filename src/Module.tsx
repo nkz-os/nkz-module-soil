@@ -30,7 +30,7 @@ export default defineModule({
   requiredPlan: 'pro',
   i18n,
   data: {
-    entities: ['AgriSoil', 'SoilSamplingPoint', 'SoilSurvey', 'SoilDerivedRaster'],
+    entities: ['AgriSoilExtended', 'SoilSamplingPoint', 'SoilSurvey', 'SoilDerivedRaster'],
     timeseries: [],
   },
 });

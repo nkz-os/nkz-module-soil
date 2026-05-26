@@ -20,7 +20,10 @@ interface SoilHorizon {
   ph?: number;
   ksatSaturated?: number;
   availableWaterCapacity?: number;
+  fieldCapacity?: number;
+  wiltingPoint?: number;
   hydrologicGroup?: string;
+  usdaTextureClass?: string;
   penetrationResistance?: number;
 }
 
@@ -51,24 +54,22 @@ interface NgsiLdEntity {
 
 // ─── Texture Triangle SVG Component ──────────────────────────────────────
 
-function TextureTriangle({ sand, silt, clay }: { sand: number; silt: number; clay: number }) {
-  const total = sand + silt + clay;
-  if (total < 1) return null;
-
-  const si = silt / total;
-  const c = clay / total;
-
-  // Convert ternary to Cartesian (equilateral triangle)
+// Texture class is computed by the backend (usdaTextureClass) and passed in.
+// Raw fractions may be suppressed (license) -> plot the point only when present,
+// but always show the derived class label.
+function TextureTriangle({ sand, silt, clay, textureClass }: {
+  sand?: number; silt?: number; clay?: number; textureClass?: string;
+}) {
+  const total = (sand || 0) + (silt || 0) + (clay || 0);
+  const hasFractions = total >= 1;
+  const si = hasFractions ? (silt || 0) / total : 0;
+  const c = hasFractions ? (clay || 0) / total : 0;
   const x = 0.5 * si + c;
   const y = (Math.sqrt(3) / 2) * si;
-
-  // Determine texture class
-  const textureClass = getTextureClass(sand, silt, clay);
 
   return (
     <div className="flex flex-col items-center">
       <svg viewBox="0 0 100 90" className="w-32 h-28">
-        {/* Triangle border */}
         <polygon
           points="50,5 5,85 95,85"
           fill="none"
@@ -76,37 +77,51 @@ function TextureTriangle({ sand, silt, clay }: { sand: number; silt: number; cla
           strokeWidth="1"
           className="text-nkz-border"
         />
-        {/* Axis labels */}
         <text x="50" y="3" textAnchor="middle" className="fill-nkz-muted" fontSize="5">Arena</text>
         <text x="0" y="90" textAnchor="start" className="fill-nkz-muted" fontSize="5">Arcilla</text>
         <text x="100" y="90" textAnchor="end" className="fill-nkz-muted" fontSize="5">Limo</text>
-        {/* Data point */}
-        <circle
-          cx={x * 90 + 5}
-          cy={y * 80 + 5}
-          r="3"
-          className="fill-nkz-primary"
-        />
+        {hasFractions && (
+          <circle cx={x * 90 + 5} cy={y * 80 + 5} r="3" className="fill-nkz-primary" />
+        )}
       </svg>
-      <span className="text-nkz-xs text-nkz-muted mt-1">{textureClass}</span>
+      <span className="text-nkz-xs text-nkz-muted mt-1">{textureClass || '—'}</span>
     </div>
   );
 }
 
-function getTextureClass(sand: number, silt: number, clay: number): string {
-  if (clay >= 40) return 'Clay';
-  if (silt >= 40 && clay < 40) return 'Silt';
-  if (sand >= 45 && clay < 20) return 'Sand';
-  if (sand >= 45 && clay >= 20 && clay < 35) return 'Sandy clay loam';
-  if (sand >= 45 && clay >= 35) return 'Sandy clay';
-  if (silt >= 50 && clay < 20) return 'Silt loam';
-  if (silt >= 50 && clay >= 20 && clay < 40) return 'Silty clay loam';
-  if (silt >= 50 && clay >= 40) return 'Silty clay';
-  if (sand < 45 && silt < 50 && clay >= 20 && clay < 35) return 'Clay loam';
-  if (sand < 45 && silt < 50 && clay >= 35) return 'Clay';
-  if (sand < 52 && silt >= 28 && silt < 50 && clay < 28) return 'Loam';
-  if (sand >= 52 && silt < 50 && clay < 20) return 'Sandy loam';
-  return 'Loam';
+// ─── Refresh / compute soil for a parcel ─────────────────────────────────
+
+function RefreshSoilButton({ parcelId }: { parcelId: string }) {
+  const { t } = useTranslation('soil');
+  const api = useSoilApi();
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
+
+  const onClick = async () => {
+    if (!parcelId) return;
+    setState('busy');
+    try {
+      await api.forceIngest(parcelId);
+      setState('done');
+    } catch {
+      setState('error');
+    }
+  };
+
+  const label =
+    state === 'busy' ? t('refresh.busy', 'Calculando…')
+    : state === 'done' ? t('refresh.done', 'Encolado ✓')
+    : state === 'error' ? t('refresh.error', 'Error')
+    : t('refresh.action', 'Calcular suelo');
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={state === 'busy' || !parcelId}
+      className="px-3 py-1.5 text-nkz-xs rounded-nkz-sm border border-nkz-border hover:border-nkz-primary disabled:opacity-50"
+    >
+      {label}
+    </button>
+  );
 }
 
 // ─── Module Page ─────────────────────────────────────────────────────────
@@ -165,7 +180,7 @@ export default function ModulePage() {
 function DashboardTab() {
   const { t } = useTranslation('soil');
   const api = useSoilApi();
-  const { data: soils, isLoading: soilsLoading } = useEntities<AgriSoilEntity>('AgriSoil');
+  const { data: soils, isLoading: soilsLoading } = useEntities<AgriSoilEntity>('AgriSoilExtended');
   const [selectedParcel, setSelectedParcel] = useState<string | null>(null);
   const [summary, setSummary] = useState<AgriSoilEntity | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -279,16 +294,20 @@ function DashboardTab() {
       {/* Selected parcel detail */}
       {summary && selectedParcel && (
         <div className="bg-nkz-surface rounded-nkz-md p-6">
-          <h2 className="text-nkz-lg font-medium mb-4">{t('dashboard.detail')}</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-nkz-lg font-medium">{t('dashboard.detail')}</h2>
+            <RefreshSoilButton parcelId={summary.refAgriParcel?.object?.split(':').pop() || ''} />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Texture triangle */}
             {summary.horizons?.value?.[0] && (
               <div className="flex flex-col items-center">
                 <h3 className="text-nkz-sm font-medium mb-2">{t('dashboard.texture')}</h3>
                 <TextureTriangle
-                  sand={summary.horizons.value[0].sand || 0}
-                  silt={summary.horizons.value[0].silt || 0}
-                  clay={summary.horizons.value[0].clay || 0}
+                  sand={summary.horizons.value[0].sand}
+                  silt={summary.horizons.value[0].silt}
+                  clay={summary.horizons.value[0].clay}
+                  textureClass={summary.horizons.value[0].usdaTextureClass}
                 />
               </div>
             )}
@@ -299,6 +318,12 @@ function DashboardTab() {
               {summary.horizons?.value?.map((h: SoilHorizon) => (
                 <div key={`${h.depthFrom}-${h.depthTo}`} className="text-nkz-xs space-y-1 border-b border-nkz-border/50 pb-2">
                   <div className="font-medium text-nkz-muted">{h.depthFrom}–{h.depthTo} cm</div>
+                  {h.usdaTextureClass && (
+                    <div className="flex justify-between">
+                      <span>{t('textureClass', 'Texture class')}</span>
+                      <span className="font-medium">{h.usdaTextureClass}</span>
+                    </div>
+                  )}
                   {h.hydrologicGroup && (
                     <div className="flex justify-between">
                       <span>{t('hydrologicGroup')}</span>

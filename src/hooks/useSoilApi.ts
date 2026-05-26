@@ -63,6 +63,9 @@ export function useSoilApi() {
     uploadCsv: (formData: FormData) =>
       api.post('/v1/soil/sampling-points/batch', formData),
 
+    forceIngest: (parcelId: string) =>
+      api.post(`/v1/soil/parcel/${parcelId}/ingest`, {}),
+
     getMetrics: () =>
       api.get<{ providers: Array<{
         provider: string;
