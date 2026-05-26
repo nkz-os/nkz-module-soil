@@ -13,7 +13,7 @@ COPY pyproject.toml ./
 COPY capabilities.yaml ./
 COPY backend/ ./backend/
 
-RUN pip install --no-cache-dir -e "."
+RUN pip install --no-cache-dir -e ".[geo]"
 
 EXPOSE 8000
 
