@@ -173,7 +173,22 @@ async def tenant_quota(tenant_id: str = Depends(get_tenant_id)):
 # at any point without requiring a pre-existing AgriSoilExtended entity.
 # ---------------------------------------------------------------------------
 
-_DEFAULT_DEPTH = "0-30"
+_DEFAULT_DEPTH = "0-5"
+
+# LUCAS-supported depth intervals (the only ones the KNN provider returns)
+_LUCAS_DEPTHS = [(0, 5), (5, 15), (15, 30)]
+
+
+def _split_depth(depth_from: int, depth_to: int) -> list[tuple[int, int]]:
+    """Split a requested depth range into LUCAS-compatible sub-intervals."""
+    intervals = []
+    for ld_from, ld_to in _LUCAS_DEPTHS:
+        if ld_to <= depth_from:
+            continue
+        if ld_from >= depth_to:
+            break
+        intervals.append((max(ld_from, depth_from), min(ld_to, depth_to)))
+    return intervals or [(depth_from, depth_to)]
 
 
 @router.get("/point/texture")
@@ -200,7 +215,10 @@ async def point_texture(
     """
     depth_from, depth_to = map(int, depth.split("-"))
     geometry = {"type": "Point", "coordinates": [lon, lat]}
-    depth_interval = DepthInterval(depth_from=depth_from, depth_to=depth_to)
+    sub_intervals = _split_depth(depth_from, depth_to)
+    depth_intervals = [
+        DepthInterval(depth_from=df, depth_to=dt) for df, dt in sub_intervals
+    ]
 
     if not _registry:
         raise HTTPException(
@@ -215,7 +233,7 @@ async def point_texture(
         if not provider.covers(geometry):
             continue
         try:
-            result = await provider.fetch(geometry, [], [depth_interval])
+            result = await provider.fetch(geometry, [], depth_intervals)
             if result and result.horizons:
                 break
         except Exception:
@@ -227,6 +245,7 @@ async def point_texture(
             detail="No soil data available at this location from any provider",
         )
 
+    # Use top horizon for texture properties (most relevant for agriculture)
     h = result.horizons[0]
     sand = h.sand or 0.0
     clay = h.clay or 0.0
