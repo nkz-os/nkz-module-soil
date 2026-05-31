@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from nkz_soil.api.dependencies import get_tenant_id
 from nkz_soil.api.limiter import limiter
-from nkz_soil.api.routes.providers import _registry
+from nkz_soil.api.routes import providers as provider_routes
 from nkz_soil.models.domain import DepthInterval
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
@@ -220,14 +220,14 @@ async def point_texture(
         DepthInterval(depth_from=df, depth_to=dt) for df, dt in sub_intervals
     ]
 
-    if not _registry:
+    if not provider_routes._registry:
         raise HTTPException(
             status_code=503,
             detail="Soil provider registry not initialized",
         )
 
     # Try each provider in priority order until one returns data
-    providers = _registry.get_all()
+    providers = provider_routes._registry.get_all()
     result = None
     for provider in providers:
         if not provider.covers(geometry):
