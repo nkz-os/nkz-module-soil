@@ -1,7 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from nkz_soil.api.dependencies import get_tenant_id
 from nkz_soil.api.limiter import limiter
+from nkz_soil.api.routes.providers import _registry
+from nkz_soil.models.domain import DepthInterval, Horizon
+from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
+from nkz_soil.pedotransfer.usda_texture import usda_texture_class
+from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.storage.orion import OrionClient
 
 router = APIRouter()
@@ -159,4 +164,104 @@ async def tenant_quota(tenant_id: str = Depends(get_tenant_id)):
         "evaluatedHectares": evaluated_ha,
         "contractedHectares": 0,  # TODO: configurable per tenant
         "soilEntities": len(entities),
+    }
+
+
+# ---------------------------------------------------------------------------
+# On-the-fly texture resolution — canonical endpoint for other platform
+# services (weather-api, risk-worker, crop-health) to obtain soil texture
+# at any point without requiring a pre-existing AgriSoilExtended entity.
+# ---------------------------------------------------------------------------
+
+_DEFAULT_DEPTH = "0-30"
+
+
+@router.get("/point/texture")
+@limiter.exempt
+async def point_texture(
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    depth: str = Query(_DEFAULT_DEPTH, pattern=r"^\d+-\d+$"),
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Resolve soil texture on-the-fly for any geographic point.
+
+    Triggers the full provider chain (LUCAS → SoilGrids → ESDB → …) but does
+    NOT persist the result to Orion-LD.  This is a read-only query — use
+    POST /parcel/{id}/ingest when you need the result stored as AgriSoilExtended.
+
+    Returns sand, clay, silt, organicCarbon (all %), plus Saxton-Rawls (2006)
+    derived properties: fieldCapacity, wiltingPoint, saturatedHydraulicConductivity,
+    hydrologicGroup (SCS), and usdaTextureClass.
+
+    This is the canonical endpoint for any platform service that needs soil
+    texture data at a specific point (e.g. weather-api agro-status, risk-worker
+    workability models, crop-health water balance).
+    """
+    depth_from, depth_to = map(int, depth.split("-"))
+    geometry = {"type": "Point", "coordinates": [lon, lat]}
+    depth_interval = DepthInterval(depth_from=depth_from, depth_to=depth_to)
+
+    if not _registry:
+        raise HTTPException(
+            status_code=503,
+            detail="Soil provider registry not initialized",
+        )
+
+    # Try each provider in priority order until one returns data
+    providers = _registry.get_all()
+    result = None
+    for provider in providers:
+        if not provider.covers(geometry):
+            continue
+        try:
+            result = await provider.fetch(geometry, [], [depth_interval])
+            if result and result.horizons:
+                break
+        except Exception:
+            continue
+
+    if not result or not result.horizons:
+        raise HTTPException(
+            status_code=404,
+            detail="No soil data available at this location from any provider",
+        )
+
+    h = result.horizons[0]
+    sand = h.sand or 0.0
+    clay = h.clay or 0.0
+    silt = h.silt or max(0.0, 100.0 - sand - clay)
+    oc = h.organic_carbon or 0.5
+
+    # USDA texture class
+    tc = usda_texture_class(sand, silt, clay)
+
+    # Saxton-Rawls 2006 pedotransfer
+    ptf = saxton_rawls_2006(sand, clay, oc)
+
+    # SCS hydrologic group
+    hg = scs_hydrologic_group(ptf["ksat"])
+
+    return {
+        "point": {"lat": lat, "lon": lon},
+        "depth": {"from": depth_from, "to": depth_to},
+        "texture": {
+            "sand": sand,
+            "clay": clay,
+            "silt": silt,
+            "organicCarbon": oc,
+            "usdaTextureClass": tc,
+        },
+        "hydraulic": {
+            "fieldCapacity": ptf["field_capacity"],
+            "wiltingPoint": ptf["wilting_point"],
+            "saturatedHydraulicConductivity": ptf["ksat"],
+            "hydrologicGroup": hg,
+        },
+        "source": {
+            "provider": result.provider,
+            "attribution": result.attribution,
+            "license": result.license,
+            "uncertainty": result.uncertainty,
+        },
     }
