@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from nkz_soil.api.dependencies import get_tenant_id
 from nkz_soil.api.limiter import limiter
 from nkz_soil.api.routes.providers import _registry
-from nkz_soil.models.domain import DepthInterval, Horizon
+from nkz_soil.models.domain import DepthInterval
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
