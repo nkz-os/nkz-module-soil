@@ -226,7 +226,10 @@ async def point_texture(
             detail="Soil provider registry not initialized",
         )
 
-    # Try each provider in priority order until one returns data
+    # Try each provider in priority order until one returns actual texture data.
+    # A provider may return non-empty horizons with sand/clay/silt all None
+    # (e.g. LUCAS 2018 topsoil which lacks texture columns). Keep trying
+    # lower-priority providers until we get real sand/clay/silt values.
     providers = provider_routes._registry.get_all()
     result = None
     for provider in providers:
@@ -235,7 +238,10 @@ async def point_texture(
         try:
             result = await provider.fetch(geometry, [], depth_intervals)
             if result and result.horizons:
-                break
+                # Only accept if the provider returned actual texture values
+                h = result.horizons[0]
+                if h.sand is not None or h.clay is not None or h.silt is not None:
+                    break
         except Exception:
             continue
 
