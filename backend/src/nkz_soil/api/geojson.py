@@ -6,6 +6,7 @@ from __future__ import annotations
 ALLOWED_LAYER_ATTRS = {
     "usdaTextureClass", "availableWaterCapacity", "fieldCapacity",
     "wiltingPoint", "ksatSaturated", "hydrologicGroup",
+    "compactionSusceptibilityScore", "compactionSusceptibilityClass",
 }
 
 

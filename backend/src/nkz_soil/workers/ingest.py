@@ -428,6 +428,17 @@ def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
             if horizon.compaction_susceptibility
             else None
         ),
+        # Flat fields for GeoJSON layer consumption (continuous + categorical)
+        "compactionSusceptibilityScore": (
+            horizon.compaction_susceptibility["score"]
+            if horizon.compaction_susceptibility
+            else None
+        ),
+        "compactionSusceptibilityClass": (
+            horizon.compaction_susceptibility["class"]
+            if horizon.compaction_susceptibility
+            else None
+        ),
     }
 
 

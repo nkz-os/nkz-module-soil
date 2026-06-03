@@ -10,6 +10,7 @@ export const LAYER_ATTRIBUTES: LayerAttribute[] = [
   { id: 'hydrologicGroup', kind: 'categorical' },
   { id: 'availableWaterCapacity', kind: 'continuous', unit: 'm³/m³', range: [0.05, 0.25] },
   { id: 'ksatSaturated', kind: 'continuous', unit: 'mm/h', range: [0, 60] },
+  { id: 'compactionSusceptibilityScore', kind: 'continuous', unit: 'score', range: [0, 100] },
 ];
 
 const CATEGORICAL: Record<string, string> = {
@@ -22,6 +23,11 @@ const CATEGORICAL: Record<string, string> = {
 
 const NEUTRAL = '#cccccc';
 const RAMP = ['#2c7bb6', '#abd9e9', '#ffffbf', '#fdae61', '#d7191c'];
+
+// Compaction susceptibility: green→yellow→orange→red (low→very_high risk)
+const COMPACTION_RAMP = ['#27ae60', '#2ecc71', '#f39c12', '#e67e22', '#c0392b'];
+
+const COMPACTION_SCORE = [0, 25, 55, 70, 100];
 
 function lerpHex(a: string, b: string, t: number): string {
   const pa = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16));
@@ -36,6 +42,20 @@ export function soilLayerColor(attribute: string, value: string | number | null)
   if (attr?.kind === 'categorical' || typeof value === 'string') {
     return CATEGORICAL[String(value)] ?? NEUTRAL;
   }
+
+  // Use compaction-specific color ramp for the susceptibility attribute
+  if (attribute === 'compactionSusceptibilityScore') {
+    const score = Number(value);
+    for (let i = COMPACTION_SCORE.length - 1; i >= 0; i--) {
+      if (score >= COMPACTION_SCORE[i]) {
+        if (i >= COMPACTION_SCORE.length - 1) return COMPACTION_RAMP[COMPACTION_RAMP.length - 1];
+        const segT = (score - COMPACTION_SCORE[i]) / (COMPACTION_SCORE[i + 1] - COMPACTION_SCORE[i]);
+        return lerpHex(COMPACTION_RAMP[i], COMPACTION_RAMP[i + 1], segT);
+      }
+    }
+    return COMPACTION_RAMP[0];
+  }
+
   const [min, max] = attr?.range ?? [0, 1];
   const t = Math.max(0, Math.min(1, (Number(value) - min) / (max - min || 1)));
   const seg = t * (RAMP.length - 1);
@@ -59,7 +79,8 @@ export type Legend =
 export function legendFor(attribute: string): Legend {
   const attr = LAYER_ATTRIBUTES.find(a => a.id === attribute);
   if (attr?.kind === 'continuous') {
-    return { kind: 'continuous', colors: RAMP, range: attr.range ?? [0, 1], unit: attr.unit };
+    const colors = attribute === 'compactionSusceptibilityScore' ? COMPACTION_RAMP : RAMP;
+    return { kind: 'continuous', colors, range: attr.range ?? [0, 1], unit: attr.unit };
   }
   const values = attribute === 'hydrologicGroup' ? HYDROLOGIC_GROUPS : USDA_TEXTURE_CLASSES;
   return { kind: 'categorical', entries: values.map(v => ({ value: v, color: soilLayerColor(attribute, v) })) };
