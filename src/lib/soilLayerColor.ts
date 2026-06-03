@@ -56,6 +56,15 @@ export function soilLayerColor(attribute: string, value: string | number | null)
     return COMPACTION_RAMP[0];
   }
 
+  // Penetrometer resistance (MPa): green (<1) → yellow (1-2) → orange (2-3) → red (>3)
+  if (attribute === 'penetrationResistance') {
+    const mpa = Number(value);
+    if (mpa < 1.0) return '#27ae60';
+    if (mpa < 2.0) return '#f39c12';
+    if (mpa < 3.0) return '#e67e22';
+    return '#c0392b';
+  }
+
   const [min, max] = attr?.range ?? [0, 1];
   const t = Math.max(0, Math.min(1, (Number(value) - min) / (max - min || 1)));
   const seg = t * (RAMP.length - 1);
