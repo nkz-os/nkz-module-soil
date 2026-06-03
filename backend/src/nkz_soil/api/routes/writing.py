@@ -350,3 +350,85 @@ async def create_sampling_points_batch(
         "details": created,
         "errorDetails": errors,
     }
+
+
+@router.post("/parcel/{parcel_id}/rasterize")
+async def rasterize_parcel_property(
+    parcel_id: str,
+    property: str = "penetrationResistance",
+    depth: str = "0-30",
+    resolution: int = 5,
+    tenant_id: str = Depends(get_tenant_id),
+):
+    """Generate an intra-parcel raster from SoilSamplingPoint measurements.
+
+    Queries all SoilSamplingPoint entities linked to this parcel that have
+    the requested property, interpolates via kriging/IDW, uploads a COG
+    to MinIO, and registers a SoilDerivedRaster entity in Orion-LD.
+
+    Requires at least 3 sampling points with the property.
+
+    Returns the presigned MinIO URL for immediate map display.
+    """
+    from nkz_soil.interpolation.raster import generate_raster
+
+    depth_from, depth_to = map(int, depth.split("-"))
+
+    async with OrionClient(tenant_id) as orion:
+        # Query SoilSamplingPoint entities for this parcel
+        entities = await orion.query_entities(type="SoilSamplingPoint")
+        matching = [
+            e for e in entities
+            if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
+        ]
+
+        sample_points = []
+        for e in matching:
+            loc = e.get("location", {}).get("value", {})
+            coords = loc.get("coordinates", [])
+            if len(coords) < 2:
+                # Try GeoProperty alternate format
+                if loc.get("type") == "Point":
+                    coords = loc.get("coordinates", [])
+            if len(coords) < 2:
+                continue
+
+            prop_val = e.get(property)
+            if isinstance(prop_val, dict):
+                prop_val = prop_val.get("value")
+            if prop_val is None:
+                continue
+
+            sample_points.append({
+                "x": float(coords[0]),
+                "y": float(coords[1]),
+                "value": float(prop_val),
+            })
+
+        if len(sample_points) < 3:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Need at least 3 sampling points with '{property}'. Found: {len(sample_points)}",
+            )
+
+        # Generate raster
+        result = await generate_raster(
+            tenant_id=tenant_id,
+            parcel_id=parcel_id,
+            property_name=property,
+            depth_from=depth_from,
+            depth_to=depth_to,
+            sample_points=sample_points,
+            resolution_m=resolution,
+        )
+
+        return {
+            "parcelId": parcel_id,
+            "property": property,
+            "depth": depth,
+            "resolution": resolution,
+            "samplePoints": len(sample_points),
+            "method": result["method"],
+            "url": result["url"],
+            "entityId": result["entity_id"],
+        }
