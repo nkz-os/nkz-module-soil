@@ -33,7 +33,7 @@ def test_health(client):
 
 def test_parcel_summary_not_found(client, mock_orion):
     mock_orion.query_entities.return_value = []
-    resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "t1"})
+    resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert resp.status_code == 404
 
 
@@ -46,7 +46,7 @@ def test_parcel_summary_found(client, mock_orion):
             "dataSource": {"value": "soilgrids"},
         }
     ]
-    resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "t1"})
+    resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert resp.status_code == 200
     assert resp.json()["dataSource"]["value"] == "soilgrids"
 
@@ -62,14 +62,14 @@ def test_parcel_horizons(client, mock_orion):
             ]},
         }
     ]
-    resp = client.get("/v1/soil/parcel/test-1/horizons?depth=0-10", headers={"X-Tenant-ID": "t1"})
+    resp = client.get("/v1/soil/parcel/test-1/horizons?depth=0-10", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert resp.status_code == 200
     assert len(resp.json()["horizons"]) == 1
 
 
 def test_parcel_horizons_not_found(client, mock_orion):
     mock_orion.query_entities.return_value = []
-    resp = client.get("/v1/soil/parcel/test-1/horizons", headers={"X-Tenant-ID": "t1"})
+    resp = client.get("/v1/soil/parcel/test-1/horizons", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert resp.status_code == 404
 
 
@@ -81,7 +81,7 @@ def test_hydrologic_group(client, mock_orion):
             "horizons": {"value": [{"hydrologicGroup": "B"}]},
         }
     ]
-    resp = client.get("/v1/soil/parcel/test-1/hydrologic-group", headers={"X-Tenant-ID": "t1"})
+    resp = client.get("/v1/soil/parcel/test-1/hydrologic-group", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert resp.status_code == 200
     assert resp.json()["hydrologicGroup"] == "B"
 
@@ -98,17 +98,17 @@ def test_tenant_quota(client, mock_orion):
             },
         },
     ]
-    resp = client.get("/v1/soil/tenant/quota", headers={"X-Tenant-ID": "t1"})
+    resp = client.get("/v1/soil/tenant/quota", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["tenantId"] == "t1"
+    assert data["tenantId"] == "tenant1"
     assert data["evaluatedHectares"] > 0
     assert data["soilEntities"] == 1
 
 
 def test_tenant_quota_no_entities(client, mock_orion):
     mock_orion.query_entities.return_value = []
-    resp = client.get("/v1/soil/tenant/quota", headers={"X-Tenant-ID": "t1"})
+    resp = client.get("/v1/soil/tenant/quota", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["evaluatedHectares"] == 0

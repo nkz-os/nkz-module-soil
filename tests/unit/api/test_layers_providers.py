@@ -24,8 +24,8 @@ def test_layers_manifest(client):
     assert "soil-compaction" in layer_ids
 
 
-def test_provider_health(client):
-    resp = client.get("/v1/soil/providers/health")
+def test_provider_health(client, auth_headers):
+    resp = client.get("/v1/soil/providers/health", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
     assert "providers" in data
@@ -35,8 +35,11 @@ def test_provider_health(client):
     assert {"LUCAS-Texture", "ESDB-Raster"} <= names
 
 
-def test_provider_coverage(client):
-    resp = client.get("/v1/soil/providers/coverage?bbox=-2.0,42.0,-1.0,43.0")
+def test_provider_coverage(client, auth_headers):
+    resp = client.get(
+        "/v1/soil/providers/coverage?bbox=-2.0,42.0,-1.0,43.0",
+        headers=auth_headers,
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert "providers" in data

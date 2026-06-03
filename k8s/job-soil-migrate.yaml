@@ -10,8 +10,8 @@ spec:
       restartPolicy: Never
       containers:
       - name: migrate
-        image: ghcr.io/nkz-os/nkz-module-soil/migrate:latest
-        imagePullPolicy: Always
+        image: ghcr.io/nkz-os/nkz-module-soil/migrate@sha256:6b7e0621169b5797a19e2871cfd0fcf28082327612d75a8225970930cb980afb
+        imagePullPolicy: IfNotPresent
         env:
         - name: SOIL_PG_DSN
           valueFrom:

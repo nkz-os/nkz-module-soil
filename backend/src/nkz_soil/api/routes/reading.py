@@ -1,50 +1,45 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 
-from nkz_soil.api.dependencies import get_tenant_id
+from nkz_platform_sdk import AuthContext
+from nkz_soil.api.dependencies import require_auth
 from nkz_soil.api.limiter import limiter
 from nkz_soil.api.routes import providers as provider_routes
 from nkz_soil.models.domain import DepthInterval
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
-from nkz_soil.storage.orion import OrionClient
+from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 
 router = APIRouter()
 
 
+async def _first_agri_soil(orion: OrionClient, parcel_id: str) -> dict:
+    entities = await orion.query_entities(
+        type="AgriSoilExtended",
+        q=parcel_ref_query(parcel_id),
+        limit=1,
+    )
+    if not entities:
+        raise HTTPException(status_code=404, detail="No AgriSoil found for this parcel")
+    return entities[0]
+
+
 @router.get("/parcel/{parcel_id}/summary")
 @limiter.exempt
-async def parcel_summary(parcel_id: str, tenant_id: str = Depends(get_tenant_id)):
-    async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="AgriSoilExtended")
-        matching = [
-            e
-            for e in entities
-            if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
-        ]
-        if not matching:
-            raise HTTPException(
-                status_code=404, detail="No AgriSoil found for this parcel"
-            )
-        return matching[0]
+async def parcel_summary(parcel_id: str, auth: AuthContext = require_auth()):
+    async with OrionClient(auth.tenant_id) as orion:
+        return await _first_agri_soil(orion, parcel_id)
 
 
 @router.get("/parcel/{parcel_id}/horizons")
 @limiter.exempt
 async def parcel_horizons(
-    parcel_id: str, depth: str = "0-30", tenant_id: str = Depends(get_tenant_id)
+    parcel_id: str, depth: str = "0-30", auth: AuthContext = require_auth()
 ):
     depth_from, depth_to = map(int, depth.split("-"))
-    async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="AgriSoilExtended")
-        matching = [
-            e
-            for e in entities
-            if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
-        ]
-        if not matching:
-            raise HTTPException(status_code=404, detail="No AgriSoil found")
-        horizons = matching[0].get("horizons", {}).get("value", [])
+    async with OrionClient(auth.tenant_id) as orion:
+        entity = await _first_agri_soil(orion, parcel_id)
+        horizons = entity.get("horizons", {}).get("value", [])
         filtered = [
             h
             for h in horizons
@@ -59,17 +54,19 @@ async def parcel_raster(
     parcel_id: str,
     property: str,
     depth: str = "0-30",
-    tenant_id: str = Depends(get_tenant_id),
+    auth: AuthContext = require_auth(),
 ):
-    async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="SoilDerivedRaster")
+    async with OrionClient(auth.tenant_id) as orion:
         depth_from, depth_to = map(int, depth.split("-"))
+        entities = await orion.query_entities(
+            type="SoilDerivedRaster",
+            q=parcel_ref_query(parcel_id),
+        )
         matching = [
             e
             for e in entities
             if (
-                e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
-                and e.get("property", {}).get("value") == property
+                e.get("property", {}).get("value") == property
                 and e.get("depthFrom", {}).get("value") == depth_from
                 and e.get("depthTo", {}).get("value") == depth_to
             )
@@ -89,18 +86,11 @@ async def parcel_raster(
 @router.get("/parcel/{parcel_id}/hydrologic-group")
 @limiter.exempt
 async def parcel_hydrologic_group(
-    parcel_id: str, tenant_id: str = Depends(get_tenant_id)
+    parcel_id: str, auth: AuthContext = require_auth()
 ):
-    async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="AgriSoilExtended")
-        matching = [
-            e
-            for e in entities
-            if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
-        ]
-        if not matching:
-            raise HTTPException(status_code=404, detail="No AgriSoil found")
-        horizons = matching[0].get("horizons", {}).get("value", [])
+    async with OrionClient(auth.tenant_id) as orion:
+        entity = await _first_agri_soil(orion, parcel_id)
+        horizons = entity.get("horizons", {}).get("value", [])
         if not horizons:
             raise HTTPException(status_code=404, detail="No horizons found")
         group = horizons[0].get("hydrologicGroup", "B")
@@ -110,11 +100,11 @@ async def parcel_hydrologic_group(
 @router.get("/point")
 @limiter.exempt
 async def point_query(
-    lat: float, lon: float, depth: str = "0-30", tenant_id: str = Depends(get_tenant_id)
+    lat: float, lon: float, depth: str = "0-30", auth: AuthContext = require_auth()
 ):
     depth_from, depth_to = map(int, depth.split("-"))
     geometry = {"type": "Point", "coordinates": [lon, lat]}
-    async with OrionClient(tenant_id) as orion:
+    async with OrionClient(auth.tenant_id) as orion:
         entities = await orion.query_entities(type="AgriSoilExtended", geometry=geometry)
         if not entities:
             raise HTTPException(status_code=404, detail="No soil data at this point")
@@ -132,13 +122,13 @@ async def point_query(
 
 @router.get("/tenant/quota")
 @limiter.exempt
-async def tenant_quota(tenant_id: str = Depends(get_tenant_id)):
+async def tenant_quota(auth: AuthContext = require_auth()):
     """Calculate evaluated hectares from AgriSoil entities in Orion-LD."""
     from shapely.geometry import shape
     from shapely.ops import transform
     import pyproj
 
-    async with OrionClient(tenant_id) as orion:
+    async with OrionClient(auth.tenant_id) as orion:
         entities = await orion.query_entities(type="AgriSoilExtended")
 
     total_area_m2 = 0.0
@@ -160,7 +150,7 @@ async def tenant_quota(tenant_id: str = Depends(get_tenant_id)):
     evaluated_ha = round(total_area_m2 / 10_000, 2)
 
     return {
-        "tenantId": tenant_id,
+        "tenantId": auth.tenant_id,
         "evaluatedHectares": evaluated_ha,
         "contractedHectares": 0,  # TODO: configurable per tenant
         "soilEntities": len(entities),
@@ -197,7 +187,7 @@ async def point_texture(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
     depth: str = Query(_DEFAULT_DEPTH, pattern=r"^\d+-\d+$"),
-    tenant_id: str = Depends(get_tenant_id),
+    auth: AuthContext = require_auth(),
 ):
     """Resolve soil texture on-the-fly for any geographic point.
 
@@ -295,26 +285,15 @@ async def point_texture(
 @router.get("/parcel/{parcel_id}/compaction-susceptibility")
 @limiter.exempt
 async def parcel_compaction_susceptibility(
-    parcel_id: str, tenant_id: str = Depends(get_tenant_id)
+    parcel_id: str, auth: AuthContext = require_auth()
 ):
     """Return compaction susceptibility for a parcel from its AgriSoil entity.
 
     Returns per-horizon susceptibility scores + overall aggregation.
     Cross-module endpoint for crop-health and other consumers.
     """
-    async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="AgriSoilExtended")
-        matching = [
-            e
-            for e in entities
-            if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
-        ]
-        if not matching:
-            raise HTTPException(
-                status_code=404, detail="No AgriSoil found for this parcel"
-            )
-
-        entity = matching[0]
+    async with OrionClient(auth.tenant_id) as orion:
+        entity = await _first_agri_soil(orion, parcel_id)
         horizons = entity.get("horizons", {}).get("value", [])
 
         # Extract per-horizon susceptibility

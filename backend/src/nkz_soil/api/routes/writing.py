@@ -2,12 +2,13 @@ import csv
 import io
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from pydantic import BaseModel
 
-from nkz_soil.api.dependencies import get_tenant_id
-from nkz_soil.config import CONTEXT_URL
-from nkz_soil.storage.orion import OrionClient
+from nkz_platform_sdk import AuthContext
+from nkz_soil.api.dependencies import get_redis_pool, require_auth
+from nkz_soil.config import BATCH_MAX_BYTES, BATCH_MAX_ROWS, CONTEXT_URL
+from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 
 router = APIRouter()
 
@@ -39,8 +40,9 @@ class SurveyInput(BaseModel):
 
 @router.post("/sampling-points")
 async def create_sampling_point(
-    body: SamplingPointInput, tenant_id: str = Depends(get_tenant_id)
+    body: SamplingPointInput, auth: AuthContext = require_auth()
 ):
+    tenant_id = auth.tenant_id
     if body.sand is not None and body.silt is not None and body.clay is not None:
         total = body.sand + body.silt + body.clay
         if total < 97 or total > 103:
@@ -99,7 +101,8 @@ async def create_sampling_point(
 
 
 @router.post("/surveys")
-async def create_survey(body: SurveyInput, tenant_id: str = Depends(get_tenant_id)):
+async def create_survey(body: SurveyInput, auth: AuthContext = require_auth()):
+    tenant_id = auth.tenant_id
     if body.survey_type not in ("lab", "em", "nir", "auger"):
         raise HTTPException(
             status_code=422,
@@ -131,13 +134,12 @@ async def create_survey(body: SurveyInput, tenant_id: str = Depends(get_tenant_i
 
 @router.post("/parcel/{parcel_id}/ingest")
 async def force_ingest(
-    parcel_id: str, tenant_id: str = Depends(get_tenant_id)
+    parcel_id: str,
+    request: Request,
+    auth: AuthContext = require_auth(),
 ):
-    from arq.connections import ArqRedis
-    from nkz_soil.config import REDIS_URL
-
-    redis = ArqRedis.from_url(REDIS_URL)
-    await redis.enqueue_job("ingest_parcel", parcel_id, tenant_id, {}, "v1")
+    redis = get_redis_pool(request)
+    await redis.enqueue_job("ingest_parcel", parcel_id, auth.tenant_id, {}, "v1")
 
     return {"status": "accepted", "parcelId": parcel_id}
 
@@ -264,11 +266,50 @@ def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
     return cleaned, None
 
 
+def _sampling_point_entity(cleaned: dict) -> tuple[str, dict]:
+    entity_id = f"urn:ngsi-ld:SoilSamplingPoint:{uuid.uuid4()}"
+    entity = {
+        "id": entity_id,
+        "type": "SoilSamplingPoint",
+        "@context": [CONTEXT_URL],
+        "location": {
+            "type": "GeoProperty",
+            "value": {"type": "Point", "coordinates": [cleaned["lon"], cleaned["lat"]]},
+        },
+        "samplingDate": {"type": "Property", "value": cleaned["sampling_date"]},
+        "laboratoryReference": {
+            "type": "Property",
+            "value": cleaned["laboratory_reference"],
+        },
+        "horizons": {
+            "type": "Property",
+            "value": [
+                {
+                    "depthFrom": cleaned["depth_from"],
+                    "depthTo": cleaned["depth_to"],
+                    "sand": cleaned.get("sand"),
+                    "silt": cleaned.get("silt"),
+                    "clay": cleaned.get("clay"),
+                    "organicCarbon": cleaned.get("organic_carbon"),
+                    "bulkDensity": cleaned.get("bulk_density"),
+                    "ph": cleaned.get("ph"),
+                    "cec": cleaned.get("cec"),
+                    "coarseFragments": cleaned.get("coarse_fragments"),
+                    "penetrationResistance": cleaned.get("penetration_resistance"),
+                }
+            ],
+        },
+        "operator": {"type": "Property", "value": cleaned["operator"]},
+    }
+    return entity_id, entity
+
+
 @router.post("/sampling-points/batch")
 async def create_sampling_points_batch(
     file: UploadFile = File(...),
-    tenant_id: str = Depends(get_tenant_id),
+    auth: AuthContext = require_auth(),
 ):
+    tenant_id = auth.tenant_id
     """Upload CSV file with multiple soil sampling points.
 
     CSV columns: lat, lon, depthFrom, depthTo, sand, silt, clay,
@@ -279,6 +320,11 @@ async def create_sampling_points_batch(
         raise HTTPException(status_code=422, detail="File must be a CSV")
 
     content = await file.read()
+    if len(content) > BATCH_MAX_BYTES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"CSV exceeds maximum size of {BATCH_MAX_BYTES} bytes",
+        )
     text = content.decode("utf-8-sig")  # handle BOM
 
     reader = csv.DictReader(io.StringIO(text))
@@ -292,63 +338,55 @@ async def create_sampling_points_batch(
             detail="CSV must include 'lat' and 'lon' columns",
         )
 
-    created = []
-    errors = []
+    rows_to_create: list[tuple[int, dict]] = []
+    errors: list[dict] = []
 
-    for row_num, raw_row in enumerate(reader, start=2):  # row 1 is header
-        # Normalize headers
+    for row_num, raw_row in enumerate(reader, start=2):
+        if len(rows_to_create) >= BATCH_MAX_ROWS:
+            errors.append({
+                "row": row_num,
+                "error": f"Exceeded maximum of {BATCH_MAX_ROWS} rows per upload",
+            })
+            break
         row = {header_map.get(k, k): v for k, v in raw_row.items() if v.strip()}
-
         cleaned, error = _validate_row(row, row_num)
         if error:
             errors.append({"row": row_num, "error": error})
             continue
+        rows_to_create.append((row_num, cleaned))
 
-        entity_id = f"urn:ngsi-ld:SoilSamplingPoint:{uuid.uuid4()}"
-        entity = {
-            "id": entity_id,
-            "type": "SoilSamplingPoint",
-            "@context": [CONTEXT_URL],
-            "location": {
-                "type": "GeoProperty",
-                "value": {"type": "Point", "coordinates": [cleaned["lon"], cleaned["lat"]]},
-            },
-            "samplingDate": {"type": "Property", "value": cleaned["sampling_date"]},
-            "laboratoryReference": {
-                "type": "Property",
-                "value": cleaned["laboratory_reference"],
-            },
-            "horizons": {
-                "type": "Property",
-                "value": [
-                    {
-                        "depthFrom": cleaned["depth_from"],
-                        "depthTo": cleaned["depth_to"],
-                        "sand": cleaned.get("sand"),
-                        "silt": cleaned.get("silt"),
-                        "clay": cleaned.get("clay"),
-                        "organicCarbon": cleaned.get("organic_carbon"),
-                        "bulkDensity": cleaned.get("bulk_density"),
-                        "ph": cleaned.get("ph"),
-                        "cec": cleaned.get("cec"),
-                        "coarseFragments": cleaned.get("coarse_fragments"),
-                        "penetrationResistance": cleaned.get("penetration_resistance"),
-                    }
-                ],
-            },
-            "operator": {"type": "Property", "value": cleaned["operator"]},
-        }
+    row_by_entity_id: dict[str, int] = {}
+    entities: list[dict] = []
+    for row_num, cleaned in rows_to_create:
+        entity_id, entity = _sampling_point_entity(cleaned)
+        row_by_entity_id[entity_id] = row_num
+        entities.append(entity)
 
-        async with OrionClient(tenant_id) as orion:
-            await orion.create_entity(entity)
+    async with OrionClient(tenant_id) as orion:
+        batch_result = await orion.create_entities_batch(entities)
 
-        created.append({"id": entity_id, "row": row_num})
+    created = [
+        {"id": eid, "row": row_by_entity_id[eid]}
+        for eid in batch_result.get("entity_ids", [])
+        if eid in row_by_entity_id
+    ]
+    for err in batch_result.get("errors", []):
+        if isinstance(err, dict):
+            eid = err.get("id", "")
+            if eid in row_by_entity_id:
+                errors.append({
+                    "row": row_by_entity_id[eid],
+                    "error": err.get("error", str(err)),
+                })
+            else:
+                errors.append({"row": 0, "error": str(err)})
 
     return {
         "created": len(created),
         "errors": len(errors),
         "details": created,
         "errorDetails": errors,
+        "method": "batch",
     }
 
 
@@ -358,7 +396,7 @@ async def rasterize_parcel_property(
     property: str = "penetrationResistance",
     depth: str = "0-30",
     resolution: int = 5,
-    tenant_id: str = Depends(get_tenant_id),
+    auth: AuthContext = require_auth(),
 ):
     """Generate an intra-parcel raster from SoilSamplingPoint measurements.
 
@@ -372,15 +410,14 @@ async def rasterize_parcel_property(
     """
     from nkz_soil.interpolation.raster import generate_raster
 
+    tenant_id = auth.tenant_id
     depth_from, depth_to = map(int, depth.split("-"))
 
     async with OrionClient(tenant_id) as orion:
-        # Query SoilSamplingPoint entities for this parcel
-        entities = await orion.query_entities(type="SoilSamplingPoint")
-        matching = [
-            e for e in entities
-            if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
-        ]
+        matching = await orion.query_entities(
+            type="SoilSamplingPoint",
+            q=parcel_ref_query(parcel_id),
+        )
 
         sample_points = []
         for e in matching:

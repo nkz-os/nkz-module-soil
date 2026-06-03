@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSoilLayerContext, LayerScope } from '../../services/soilLayerContext';
+import { ModuleAttribution } from '../ModuleAttribution';
 import { LAYER_ATTRIBUTES, legendFor } from '../../lib/soilLayerColor';
 
 export function SoilLayerToggle() {
@@ -64,6 +65,7 @@ export function SoilLayerToggle() {
           )}
 
           {statusMsg && <div className="text-nkz-muted italic">{statusMsg}</div>}
+          <ModuleAttribution />
         </div>
       )}
     </div>

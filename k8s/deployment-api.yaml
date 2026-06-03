@@ -15,8 +15,10 @@ spec:
     spec:
       containers:
         - name: api
-          image: ghcr.io/nkz-os/nkz-module-soil/soil-api:latest
-          imagePullPolicy: Always
+          # Pin by digest after each GHCR push (amd64 manifest). Update via:
+          # docker manifest inspect ghcr.io/nkz-os/nkz-module-soil/soil-api:latest
+          image: ghcr.io/nkz-os/nkz-module-soil/soil-api@sha256:462d49f88a7df2d5a13cd9e021f4918662007c8ca03f941afe37055e81700c37
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           envFrom:
@@ -32,6 +34,8 @@ spec:
                 secretKeyRef:
                   name: soil-module-secret
                   key: pg-dsn
+            - name: ORION_LD_URL
+              value: "http://orion-ld-service:1026"
             - name: ORION_BASE_URL
               value: "http://orion-ld-service:1026"
             - name: MINIO_ENDPOINT

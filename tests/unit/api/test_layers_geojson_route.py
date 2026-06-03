@@ -15,7 +15,7 @@ def _mock_orion(entities):
 
 def test_rejects_disallowed_attribute():
     r = client.get("/v1/soil/layers/parcels.geojson?attribute=clay",
-                   headers={"X-Tenant-ID": "t1"})
+                   headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert r.status_code == 400
 
 
@@ -27,7 +27,7 @@ def test_returns_featurecollection():
            "horizons": {"value": [{"depthFrom": 0, "depthTo": 5, "hydrologicGroup": "B"}]}}
     with patch("nkz_soil.api.routes.layers.OrionClient", return_value=_mock_orion([ent])):
         r = client.get("/v1/soil/layers/parcels.geojson?attribute=hydrologicGroup",
-                       headers={"X-Tenant-ID": "t1"})
+                       headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert r.status_code == 200
     body = r.json()
     assert body["type"] == "FeatureCollection"

@@ -36,7 +36,7 @@ def test_create_sampling_point_valid(client, mock_orion):
             "clay": 20,
             "ph": 6.8,
         },
-        headers={"X-Tenant-ID": "t1"},
+        headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "created"
@@ -55,7 +55,7 @@ def test_create_sampling_point_texture_sum_invalid(client, mock_orion):
             "silt": 60,
             "clay": 60,
         },
-        headers={"X-Tenant-ID": "t1"},
+        headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
     )
     assert resp.status_code == 422
 
@@ -70,7 +70,7 @@ def test_create_sampling_point_ph_invalid(client, mock_orion):
             "depth_to": 30,
             "ph": 15,
         },
-        headers={"X-Tenant-ID": "t1"},
+        headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
     )
     assert resp.status_code == 422
 
@@ -85,7 +85,7 @@ def test_create_sampling_point_bulk_density_invalid(client, mock_orion):
             "depth_to": 30,
             "bulk_density": 3.0,
         },
-        headers={"X-Tenant-ID": "t1"},
+        headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
     )
     assert resp.status_code == 422
 
@@ -94,7 +94,7 @@ def test_create_survey_valid(client, mock_orion):
     resp = client.post(
         "/v1/soil/surveys",
         json={"survey_type": "lab", "parcel_id": "p1"},
-        headers={"X-Tenant-ID": "t1"},
+        headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "created"
@@ -104,6 +104,6 @@ def test_create_survey_invalid_type(client, mock_orion):
     resp = client.post(
         "/v1/soil/surveys",
         json={"survey_type": "invalid"},
-        headers={"X-Tenant-ID": "t1"},
+        headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
     )
     assert resp.status_code == 422

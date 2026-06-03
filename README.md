@@ -12,6 +12,17 @@
 
 Provides edaphological characterization for any agricultural parcel via a **multi-source provider cascade**, **pedotransfer functions**, and **FIWARE NGSI-LD** entities. When a parcel is created or updated, the module automatically ingests soil data from all available sources, merges results by priority, derives hydraulic properties, and persists an `AgriSoil` entity in the Context Broker.
 
+## API routing (production)
+
+| Traffic | Path | Auth |
+|---------|------|------|
+| Browser / modules | `https://nkz.robotika.cloud/api/soil/*` | JWT via **api-gateway** → `X-Tenant-ID`, `X-User-ID`, `X-User-Roles` |
+| Orion subscription | `http://soil-module-service:8000/v1/soil/webhooks/orion` | Cluster-internal only; `NGSILD-Tenant` required |
+
+The module frontend uses `api.basePath: '/api/soil'` (see `src/Module.tsx`). Do **not** expose a public Ingress directly to `soil-module-api` (bypasses gateway).
+
+Internal docs: `internal-docs-local/modules/soil/` (hardening backlog). Catalog PostgreSQL: [`docs/CATALOG_INGEST.md`](docs/CATALOG_INGEST.md).
+
 ## Architecture
 
 ```
@@ -131,7 +142,8 @@ pnpm build:module # IIFE bundle → dist/nkz-module.js + dist/manifest.json
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ORION_BASE_URL` | Yes | Orion-LD Context Broker URL (internal: `http://orion-ld-service:1026`) |
+| `ORION_LD_URL` | Yes | Orion-LD URL (internal: `http://orion-ld-service:1026`). Alias: `ORION_BASE_URL` |
+| `ORION_WEBHOOK_SECRET` | No | Optional shared secret for `X-Orion-Webhook-Secret` on Orion notifications |
 | `REDIS_URL` | Yes | Redis for cache + Arq queue (internal: `redis://redis-service:6379`) |
 | `MINIO_ENDPOINT` | Yes | MinIO S3 endpoint for raster storage |
 | `MINIO_ACCESS_KEY` | Yes | MinIO access key (via K8s Secret) |
@@ -155,6 +167,17 @@ docker build -t ghcr.io/nkz-os/nkz-module-soil/worker:latest -f backend/Dockerfi
 ```
 
 ### Kubernetes
+
+Images are pinned by **digest** in `k8s/deployment-*.yaml` (not `:latest`). After each
+GHCR push, update digests:
+
+```bash
+# amd64 manifest digest (linux)
+docker manifest inspect ghcr.io/nkz-os/nkz-module-soil/soil-api:latest \
+  | jq -r '.manifests[] | select(.platform.architecture=="amd64") | .digest'
+```
+
+Then set `image: ghcr.io/nkz-os/nkz-module-soil/soil-api@<digest>` and `imagePullPolicy: IfNotPresent`.
 
 ```bash
 kubectl apply -f k8s/secret.yaml      # MinIO credentials (edit first)

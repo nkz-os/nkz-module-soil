@@ -1,11 +1,12 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
-from nkz_soil.api.dependencies import get_tenant_id
+from nkz_platform_sdk import AuthContext
+from nkz_soil.api.dependencies import require_auth
 from nkz_soil.api.geojson import is_allowed_attribute, build_parcel_featurecollection
 from nkz_soil.api.limiter import limiter
-from nkz_soil.storage.orion import OrionClient
+from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 
 logger = logging.getLogger(__name__)
 
@@ -99,41 +100,47 @@ async def parcels_geojson(
     attribute: str,
     scope: str = "all",
     parcel: str | None = None,
-    tenant_id: str = Depends(get_tenant_id),
+    auth: AuthContext = require_auth(),
 ):
     if not is_allowed_attribute(attribute):
         raise HTTPException(status_code=400, detail=f"attribute '{attribute}' is not a servable layer")
-    async with OrionClient(tenant_id) as orion:
-        entities = await orion.query_entities(type="AgriSoilExtended")
-    if scope == "selected" and parcel:
-        entities = [e for e in entities
-                    if e.get("refAgriParcel", {}).get("object", "").endswith(parcel)]
+    async with OrionClient(auth.tenant_id) as orion:
+        if scope == "selected" and parcel:
+            entities = await orion.query_entities(
+                type="AgriSoilExtended",
+                q=parcel_ref_query(parcel),
+            )
+        else:
+            entities = await orion.query_entities(type="AgriSoilExtended")
     return build_parcel_featurecollection(entities, attribute)
 
 
 @router.get("/layers/{layer_id}/render")
 @limiter.exempt
 async def render_layer(
-    layer_id: str, parcel_id: str, depth: str = "0-30", tenant_id: str = None
+    layer_id: str,
+    parcel_id: str,
+    depth: str = "0-30",
+    auth: AuthContext = require_auth(),
 ):
-    """Serve or generate a raster layer for a soil property.
-
-    First checks if a SoilDerivedRaster entity already exists in Orion-LD.
-    If found, returns a presigned MinIO URL. If not, generates the raster
-    on-demand using kriging (with IDW fallback) from available AgriSoil data.
-    """
+    """Serve or generate a raster layer for a soil property."""
     from nkz_soil.storage.minio import generate_presigned_url, get_minio_client
 
+    tenant_id = auth.tenant_id
     depth_from, depth_to = map(int, depth.split("-"))
+    horizon_prop = _LAYER_PROPERTY_MAP.get(layer_id)
+    if not horizon_prop:
+        raise HTTPException(status_code=404, detail=f"Unknown layer: {layer_id}")
 
-    # Step 1: Check if raster already exists in Orion
     async with OrionClient(tenant_id) as orion:
-        rasters = await orion.query_entities(type="SoilDerivedRaster")
+        rasters = await orion.query_entities(
+            type="SoilDerivedRaster",
+            q=parcel_ref_query(parcel_id),
+        )
         matching = [
             r for r in rasters
             if (
-                r.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
-                and r.get("soilProperty", {}).get("value") == _LAYER_PROPERTY_MAP.get(layer_id, layer_id)
+                r.get("soilProperty", {}).get("value") == horizon_prop
                 and r.get("depthFrom", {}).get("value") == depth_from
                 and r.get("depthTo", {}).get("value") == depth_to
             )
@@ -153,19 +160,12 @@ async def render_layer(
                     "generated": False,
                 }
 
-    # Step 2: Raster not found — generate on-demand
-    if not tenant_id:
-        raise HTTPException(status_code=400, detail="tenant_id required for raster generation")
+        soils = await orion.query_entities(
+            type="AgriSoilExtended",
+            q=parcel_ref_query(parcel_id),
+        )
 
-    horizon_prop = _LAYER_PROPERTY_MAP.get(layer_id)
-    if not horizon_prop:
-        raise HTTPException(status_code=404, detail=f"Unknown layer: {layer_id}")
-
-    # Collect sample points from all AgriSoil entities
-    async with OrionClient(tenant_id) as orion:
-        soils = await orion.query_entities(type="AgriSoilExtended")
-
-    sample_points = []
+    sample_points: list[dict] = []
     for soil in soils:
         horizons = soil.get("horizons", {}).get("value", [])
         location = soil.get("location", {}).get("value", {})

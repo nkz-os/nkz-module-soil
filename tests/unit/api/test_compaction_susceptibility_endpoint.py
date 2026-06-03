@@ -82,7 +82,7 @@ def test_endpoint_returns_susceptibility(client, mock_orion):
     mock_orion.query_entities.return_value = [MOCK_AGRI_SOIL]
     response = client.get(
         "/v1/soil/parcel/parcel-42/compaction-susceptibility",
-        headers={"X-Tenant-ID": "t1"},
+        headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -98,7 +98,7 @@ def test_endpoint_404_when_no_soil_data(client, mock_orion):
     mock_orion.query_entities.return_value = []
     response = client.get(
         "/v1/soil/parcel/nonexistent/compaction-susceptibility",
-        headers={"X-Tenant-ID": "t1"},
+        headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
     )
     assert response.status_code == 404
     assert "No AgriSoil found" in response.json()["detail"]
@@ -125,7 +125,7 @@ def test_endpoint_handles_missing_susceptibility_data(client, mock_orion):
     mock_orion.query_entities.return_value = [soil_without_cs]
     response = client.get(
         "/v1/soil/parcel/parcel-42/compaction-susceptibility",
-        headers={"X-Tenant-ID": "t1"},
+        headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
     )
     assert response.status_code == 200
     data = response.json()

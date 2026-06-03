@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from nkz_platform_sdk import AuthContext
+from nkz_soil.api.dependencies import require_auth
 from nkz_soil.api.limiter import limiter
 from nkz_soil.providers.base import ProviderRegistry
 
@@ -15,7 +17,7 @@ def set_registry(registry: ProviderRegistry):
 
 @router.get("/providers/health")
 @limiter.exempt
-async def provider_health():
+async def provider_health(auth: AuthContext = require_auth()):
     if not _registry:
         return {"providers": []}
     results = []
@@ -36,7 +38,7 @@ async def provider_health():
 
 @router.get("/providers/coverage")
 @limiter.exempt
-async def provider_coverage(bbox: str):
+async def provider_coverage(bbox: str, auth: AuthContext = require_auth()):
     coords = [float(c) for c in bbox.split(",")]
     geometry = {
         "type": "Polygon",

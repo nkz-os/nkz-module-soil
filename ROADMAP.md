@@ -9,7 +9,7 @@ Tracked enhancements for the Soil module. Contributions welcome.
 **Status:** planned · **Priority:** scales with tenant size
 
 The soil map layer (parcel choropleth) is served by
-`GET /api/v1/soil/layers/parcels.geojson`, which currently returns **all** of a
+`GET /api/soil/layers/parcels.geojson`, which currently returns **all** of a
 tenant's parcels in one `FeatureCollection`. This is fine for the typical case
 (tens of parcels), but for tenants with many hundreds of parcels the payload and
 the number of Cesium polygons can degrade map performance, especially in the

@@ -1,5 +1,7 @@
 import os
+from contextlib import asynccontextmanager
 
+from arq.connections import ArqRedis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -11,6 +13,7 @@ from nkz_soil.api.routes.providers import router as providers_router, set_regist
 from nkz_soil.api.routes.reading import router as reading_router
 from nkz_soil.api.routes.subscriptions import router as subscriptions_router
 from nkz_soil.api.routes.writing import router as writing_router
+from nkz_soil.config import REDIS_URL
 from nkz_soil.providers.base import ProviderRegistry
 from nkz_soil.providers.bgs import BgsProvider
 from nkz_soil.providers.esdb_raster import EsdbRasterProvider
@@ -22,6 +25,15 @@ from nkz_soil.providers.lab_analysis import LabAnalysisProvider
 from nkz_soil.providers.lucas import LucasProvider
 from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.soilgrids import SoilGridsProvider
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.redis = ArqRedis.from_url(REDIS_URL)
+    try:
+        yield
+    finally:
+        await app.state.redis.close()
 
 
 def create_app() -> FastAPI:
@@ -38,7 +50,7 @@ def create_app() -> FastAPI:
     registry.register(SoilGridsProvider())
     set_registry(registry)
 
-    app = FastAPI(title="nkz-module-soil", version="0.1.0")
+    app = FastAPI(title="nkz-module-soil", version="0.1.0", lifespan=lifespan)
 
     allowed_origins = os.environ.get(
         "CORS_ALLOWED_ORIGINS",

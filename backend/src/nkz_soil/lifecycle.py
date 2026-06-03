@@ -1,5 +1,5 @@
+import asyncio
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +16,10 @@ class SoilModuleLifecycle:
 
         s3 = get_minio_client()
 
-        # Retry with exponential backoff for transient network errors
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                s3.create_bucket(Bucket=bucket_name)
+                await asyncio.to_thread(s3.create_bucket, Bucket=bucket_name)
                 logger.info("Created MinIO bucket %s for tenant %s", bucket_name, tenant_id)
                 return {"status": "installed", "bucket": bucket_name}
             except s3.exceptions.ClientError as e:
@@ -33,14 +32,13 @@ class SoilModuleLifecycle:
                         "Bucket %s exists but owned by another account", bucket_name
                     )
                     return {"status": "partial", "bucket": bucket_name, "error": "bucket_conflict"}
-                # Retry on transient errors
                 if attempt < max_retries - 1:
                     wait = 2 ** attempt
                     logger.warning(
                         "Bucket creation failed (attempt %d/%d): %s, retrying in %ds",
                         attempt + 1, max_retries, e, wait,
                     )
-                    time.sleep(wait)
+                    await asyncio.sleep(wait)
                 else:
                     logger.error(
                         "Bucket creation failed after %d attempts: %s", max_retries, e
@@ -49,7 +47,7 @@ class SoilModuleLifecycle:
                 logger.error("Unexpected error creating bucket %s: %s", bucket_name, e)
                 if attempt < max_retries - 1:
                     wait = 2 ** attempt
-                    time.sleep(wait)
+                    await asyncio.sleep(wait)
                 else:
                     return {"status": "partial", "bucket": bucket_name, "error": str(e)}
 

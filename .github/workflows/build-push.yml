@@ -162,6 +162,7 @@ jobs:
             type=sha,prefix=
 
       - name: Build and push API image
+        id: build-api
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -171,6 +172,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Record API image digest
+        run: |
+          echo "soil-api digest: ${{ steps.build-api.outputs.digest }}"
+          echo "Update k8s/deployment-api.yaml with:"
+          echo "  image: ${{ env.API_IMAGE }}@${{ steps.build-api.outputs.digest }}"
 
   # ==========================================================================
   # Build and push Worker Docker image
@@ -256,6 +263,7 @@ jobs:
             type=sha,prefix=
 
       - name: Build and push Migrate image
+        id: build-migrate
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -265,6 +273,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Record Migrate image digest
+        run: |
+          echo "migrate digest: ${{ steps.build-migrate.outputs.digest }}"
+          echo "Update k8s/job-soil-migrate.yaml with:"
+          echo "  image: ${{ env.MIGRATE_IMAGE }}@${{ steps.build-migrate.outputs.digest }}"
 
   # ==========================================================================
   # Summary

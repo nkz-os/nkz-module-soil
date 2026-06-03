@@ -4,6 +4,10 @@ export const i18n = {
   es: {
     soil: {
       title: 'Suelo',
+      attribution: {
+        platform:
+          'Nekazari Core: plataforma FIWARE-Ready (AGPL). Datos de suelo vía NGSI-LD.',
+      },
       summary: 'Caracterización edafológica de la parcela',
       hydrologicGroup: 'Grupo hidrológico',
       ksat: 'Conductividad hidráulica (Ksat)',
@@ -113,6 +117,10 @@ export const i18n = {
   en: {
     soil: {
       title: 'Soil',
+      attribution: {
+        platform:
+          'Nekazari Core: FIWARE-Ready AgTech platform (AGPL). Soil data via NGSI-LD.',
+      },
       summary: 'Edaphological characterization of the parcel',
       hydrologicGroup: 'Hydrologic Group',
       ksat: 'Hydraulic Conductivity (Ksat)',

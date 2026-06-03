@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { SlotShell } from '@nekazari/viewer-kit';
 import { useSoilApi } from '../hooks/useSoilApi';
+import { ModuleAttribution } from '../components/ModuleAttribution';
 import { PenetrometerForm } from '../components/PenetrometerForm';
 
 export function SoilPanel({ entityId }: { entityId?: string }) {
@@ -104,6 +105,7 @@ export function SoilPanel({ entityId }: { entityId?: string }) {
 
         <hr className="border-nkz-border" />
         <PenetrometerForm parcelId={entityId || ''} />
+        <ModuleAttribution />
       </div>
     </SlotShell>
   );
