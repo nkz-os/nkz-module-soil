@@ -1,10 +1,8 @@
 """Tests for compaction_susceptibility_score pedotransfer."""
 
-import pytest
 from nkz_soil.pedotransfer.compaction_susceptibility import (
     compaction_susceptibility_score,
     TEXTURE_SUSCEPTIBILITY,
-    SUSCEPTIBILITY_CLASSES,
 )
 
 
