@@ -290,3 +290,58 @@ async def point_texture(
             "uncertainty": result.uncertainty,
         },
     }
+
+
+@router.get("/parcel/{parcel_id}/compaction-susceptibility")
+@limiter.exempt
+async def parcel_compaction_susceptibility(
+    parcel_id: str, tenant_id: str = Depends(get_tenant_id)
+):
+    """Return compaction susceptibility for a parcel from its AgriSoil entity.
+
+    Returns per-horizon susceptibility scores + overall aggregation.
+    Cross-module endpoint for crop-health and other consumers.
+    """
+    async with OrionClient(tenant_id) as orion:
+        entities = await orion.query_entities(type="AgriSoilExtended")
+        matching = [
+            e
+            for e in entities
+            if e.get("refAgriParcel", {}).get("object", "").endswith(parcel_id)
+        ]
+        if not matching:
+            raise HTTPException(
+                status_code=404, detail="No AgriSoil found for this parcel"
+            )
+
+        entity = matching[0]
+        horizons = entity.get("horizons", {}).get("value", [])
+
+        # Extract per-horizon susceptibility
+        by_horizon = []
+        for h in horizons:
+            cs = h.get("compactionSusceptibility")
+            if cs:
+                by_horizon.append({
+                    "depthFrom": h.get("depthFrom"),
+                    "depthTo": h.get("depthTo"),
+                    "score": cs.get("score"),
+                    "class": cs.get("class"),
+                    "texturalScore": cs.get("texturalScore"),
+                    "modifiersApplied": cs.get("modifiersApplied", []),
+                    "indicativeElevatedBd": cs.get("indicativeElevatedBd", False),
+                })
+
+        # Top-level aggregation from entity property
+        overall = entity.get("compactionSusceptibility", {}).get("value", {})
+
+        return {
+            "parcelId": parcel_id,
+            "overall": {
+                "score": overall.get("overallScore"),
+                "class": overall.get("overallClass"),
+                "worstHorizonScore": overall.get("worstHorizonScore"),
+                "worstHorizonClass": overall.get("worstHorizonClass"),
+            },
+            "byHorizon": by_horizon,
+        }

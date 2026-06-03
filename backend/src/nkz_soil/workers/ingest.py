@@ -10,6 +10,7 @@ from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
 from nkz_soil.pedotransfer.relative_compaction import relative_compaction
+from nkz_soil.pedotransfer.compaction_susceptibility import compaction_susceptibility_score
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
@@ -86,6 +87,7 @@ class EnrichedHorizon:
     hydrologic_group: str | None = None
     penetration_resistance: float | None = None
     relative_compaction: dict | None = None
+    compaction_susceptibility: dict | None = None
     emit: dict = None          # redistributable-safe raw values for serialization
     provenance: dict = None    # attr -> {source, license, redistributable}
 
@@ -255,6 +257,26 @@ async def ingest_parcel(
     if compaction_list:
         entity["relativeCompaction"] = {"type": "Property", "value": compaction_list}
 
+    # Aggregate compaction susceptibility across all horizons
+    susc_horizons = [
+        h.compaction_susceptibility
+        for h in merged_horizons
+        if h.compaction_susceptibility
+    ]
+    if susc_horizons:
+        scores = [s["score"] for s in susc_horizons]
+        avg_score = round(sum(scores) / len(scores))
+        worst = max(susc_horizons, key=lambda s: s["score"])
+        entity["compactionSusceptibility"] = {
+            "type": "Property",
+            "value": {
+                "overallScore": avg_score,
+                "overallClass": worst["class"],
+                "worstHorizonScore": worst["score"],
+                "worstHorizonClass": worst["class"],
+            },
+        }
+
     entity_id = entity["id"]
     async with OrionClient(tenant_id) as orion:
         existing = await orion.query_entities(type="AgriSoilExtended")
@@ -332,6 +354,32 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
         if h.sand is not None and h.silt is not None and h.clay is not None:
             h.usda_texture_class = usda_texture_class(h.sand, h.silt, h.clay)
 
+        # Compaction susceptibility (texture-based inherent risk)
+        if h.usda_texture_class is not None:
+            om_pct = None
+            if h.organic_carbon is not None:
+                om_pct = h.organic_carbon * 1.724  # van Bemmelen factor
+            bd_ref = None
+            if (
+                h.bulk_density is not None
+                and h.sand is not None
+                and h.silt is not None
+                and h.clay is not None
+            ):
+                from nkz_soil.pedotransfer.relative_compaction import (
+                    textural_class,
+                    REFERENCE_BULK_DENSITY,
+                )
+                tex = textural_class(h.sand, h.silt, h.clay)
+                bd_ref = REFERENCE_BULK_DENSITY.get(tex)
+            h.compaction_susceptibility = compaction_susceptibility_score(
+                usda_texture=h.usda_texture_class,
+                organic_matter_pct=om_pct,
+                coarse_fragments_pct=h.coarse_fragments,
+                bulk_density=h.bulk_density,
+                bulk_density_ref=bd_ref,
+            )
+
     return horizons
 
 
@@ -369,6 +417,17 @@ def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
         "wiltingPoint": horizon.wilting_point,
         "hydrologicGroup": horizon.hydrologic_group,
         "usdaTextureClass": horizon.usda_texture_class,
+        "compactionSusceptibility": (
+            {
+                "score": horizon.compaction_susceptibility["score"],
+                "class": horizon.compaction_susceptibility["class"],
+                "texturalScore": horizon.compaction_susceptibility["textural_score"],
+                "modifiersApplied": horizon.compaction_susceptibility["modifiers_applied"],
+                "indicativeElevatedBd": horizon.compaction_susceptibility["indicative_elevated_bd"],
+            }
+            if horizon.compaction_susceptibility
+            else None
+        ),
     }
 
 
