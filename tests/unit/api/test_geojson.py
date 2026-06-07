@@ -6,7 +6,7 @@ from nkz_soil.api.geojson import (
 def _entity(pid, geom, top):
     return {
         "id": f"urn:ngsi-ld:AgriSoilExtended:{pid}",
-        "refAgriParcel": {"object": f"urn:ngsi-ld:AgriParcel:{pid}"},
+        "hasAgriParcel": {"object": f"urn:ngsi-ld:AgriParcel:{pid}"},
         "location": {"value": geom},
         "horizons": {"value": [top]},
     }

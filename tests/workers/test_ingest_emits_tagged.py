@@ -21,7 +21,7 @@ def test_horizons_provenance_from_highest_priority_supplier():
     assert out["horizons"]["providedBy"]["value"] == "LUCAS-2018"
     assert out["horizons"]["license"]["value"] == "JRC-LUCAS-2018"
     assert out["parcelVersionId"]["value"] == "v1"
-    assert out["refAgriParcel"]["object"] == "urn:ngsi-ld:AgriParcel:p-1"
+    assert out["hasAgriParcel"]["object"] == "urn:ngsi-ld:AgriParcel:p-1"
 
 
 def test_lower_priority_provenance_used_when_higher_lacks_attribute():

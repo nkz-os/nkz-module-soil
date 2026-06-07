@@ -127,7 +127,7 @@ async def test_create_and_query_agri_soil(tenant_id, cleanup_entities):
                 ]],
             },
         },
-        "refAgriParcel": {
+        "hasAgriParcel": {
             "type": "Relationship",
             "object": f"urn:ngsi-ld:AgriParcel:{tenant_id}:{parcel_id}",
         },
@@ -192,7 +192,7 @@ async def test_patch_agri_soil(tenant_id, cleanup_entities):
                 "type": "GeoProperty",
                 "value": {"type": "Point", "coordinates": [-1.6, 42.8]},
             },
-            "refAgriParcel": {
+            "hasAgriParcel": {
                 "type": "Relationship",
                 "object": f"urn:ngsi-ld:AgriParcel:{tenant_id}:{parcel_id}",
             },
