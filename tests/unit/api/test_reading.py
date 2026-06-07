@@ -41,7 +41,7 @@ def test_parcel_summary_found(client, mock_orion):
     mock_orion.query_entities.return_value = [
         {
             "id": "urn:ngsi-ld:AgriSoil:1",
-            "refAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
+            "hasAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
             "horizons": {"value": [{"depthFrom": 0, "depthTo": 5, "sand": 45}]},
             "dataSource": {"value": "soilgrids"},
         }
@@ -55,7 +55,7 @@ def test_parcel_horizons(client, mock_orion):
     mock_orion.query_entities.return_value = [
         {
             "id": "urn:ngsi-ld:AgriSoil:1",
-            "refAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
+            "hasAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
             "horizons": {"value": [
                 {"depthFrom": 0, "depthTo": 5, "sand": 45},
                 {"depthFrom": 5, "depthTo": 15, "sand": 40},
@@ -77,7 +77,7 @@ def test_hydrologic_group(client, mock_orion):
     mock_orion.query_entities.return_value = [
         {
             "id": "urn:ngsi-ld:AgriSoil:1",
-            "refAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
+            "hasAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
             "horizons": {"value": [{"hydrologicGroup": "B"}]},
         }
     ]

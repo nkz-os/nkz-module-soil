@@ -29,7 +29,7 @@ def mock_orion():
 MOCK_AGRI_SOIL = {
     "id": "urn:ngsi-ld:AgriSoilExtended:test-tenant:parcel-42",
     "type": "AgriSoilExtended",
-    "refAgriParcel": {
+    "hasAgriParcel": {
         "type": "Relationship",
         "object": "urn:ngsi-ld:AgriParcel:parcel-42",
     },

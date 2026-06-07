@@ -26,7 +26,7 @@ def test_agri_soil_extended_has_smartagrifood_context():
     e = AgriSoilExtended(
         id="urn:ngsi-ld:AgriSoilExtended:p-1",
         location=GeoProperty(value={"type": "Point", "coordinates": [0, 0]}),
-        refAgriParcel=Relationship(object="urn:ngsi-ld:AgriParcel:p-1"),
+        hasAgriParcel=Relationship(object="urn:ngsi-ld:AgriParcel:p-1"),
         horizons=TaggedProperty(value=[], provided_by="LUCAS-2018", license_id="JRC-LUCAS-2018"),
     )
     ctx = e.context

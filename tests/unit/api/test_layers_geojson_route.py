@@ -22,7 +22,7 @@ def test_rejects_disallowed_attribute():
 def test_returns_featurecollection():
     geom = {"type": "Polygon", "coordinates": [[[0, 0], [0, 1], [1, 1], [0, 0]]]}
     ent = {"id": "urn:ngsi-ld:AgriSoilExtended:p1",
-           "refAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:p1"},
+           "hasAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:p1"},
            "location": {"value": geom},
            "horizons": {"value": [{"depthFrom": 0, "depthTo": 5, "hydrologicGroup": "B"}]}}
     with patch("nkz_soil.api.routes.layers.OrionClient", return_value=_mock_orion([ent])):
