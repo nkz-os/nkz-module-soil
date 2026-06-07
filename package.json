@@ -2,6 +2,7 @@
   "name": "nkz-module-soil-frontend",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@9.0.0",
   "type": "module",
   "nkz": {
     "moduleId": "soil"
