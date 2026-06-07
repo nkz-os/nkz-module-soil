@@ -113,7 +113,7 @@ async def generate_raster(
         "id": entity_id,
         "type": "SoilDerivedRaster",
         "@context": [CONTEXT_URL],
-        "refAgriParcel": {
+        "hasAgriParcel": {
             "type": "Relationship",
             "object": f"urn:ngsi-ld:AgriParcel:{tenant_id}:{parcel_id}",
         },

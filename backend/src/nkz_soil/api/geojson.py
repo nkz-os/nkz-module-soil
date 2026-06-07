@@ -15,7 +15,7 @@ def is_allowed_attribute(attribute: str) -> bool:
 
 
 def _parcel_id(entity: dict) -> str:
-    ref = entity.get("refAgriParcel", {}).get("object", "")
+    ref = entity.get("hasAgriParcel", {}).get("object", "")
     if ref:
         return ref.split(":")[-1]
     return entity.get("id", "").split(":")[-1]

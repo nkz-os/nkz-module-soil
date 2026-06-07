@@ -121,7 +121,7 @@ async def create_survey(body: SurveyInput, auth: AuthContext = require_auth()):
         "tenant": {"type": "Property", "value": tenant_id},
     }
     if body.parcel_id:
-        entity["refAgriParcel"] = {
+        entity["hasAgriParcel"] = {
             "type": "Relationship",
             "object": f"urn:ngsi-ld:AgriParcel:{body.parcel_id}",
         }

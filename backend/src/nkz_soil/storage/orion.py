@@ -24,12 +24,12 @@ def current_tenant() -> str | None:
 
 
 def parcel_ref_query(parcel_id: str) -> str:
-    """NGSI-LD q filter for refAgriParcel (exact URN)."""
+    """NGSI-LD q filter for hasAgriParcel (exact URN)."""
     if parcel_id.startswith("urn:"):
         urn = parcel_id
     else:
         urn = f"urn:ngsi-ld:AgriParcel:{parcel_id}"
-    return f'refAgriParcel=="{urn}"'
+    return f'hasAgriParcel=="{urn}"'
 
 
 class OrionClient:

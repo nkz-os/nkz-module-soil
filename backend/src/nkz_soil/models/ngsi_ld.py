@@ -63,7 +63,7 @@ class TaggedProperty:
 class AgriSoilExtended:
     id: str
     location: GeoProperty
-    refAgriParcel: Relationship
+    hasAgriParcel: Relationship
     horizons: TaggedProperty
     hydrologicGroup: TaggedProperty | None = None
     parcelVersionId: TaggedProperty | None = None
@@ -79,7 +79,7 @@ class AgriSoilExtended:
             "id": self.id,
             "type": self.type,
             "location": self.location.model_dump(),
-            "refAgriParcel": self.refAgriParcel.model_dump(),
+            "hasAgriParcel": self.hasAgriParcel.model_dump(),
             "horizons": self.horizons.to_ngsi(),
             "@context": self.context,
         }
@@ -113,7 +113,7 @@ class SoilSurvey:
     startDate: TaggedProperty
     tenant: TaggedProperty
     endDate: TaggedProperty | None = None
-    refAgriParcel: Relationship | None = None
+    hasAgriParcel: Relationship | None = None
     instrumentation: TaggedProperty | None = None
     pointCount: TaggedProperty | None = None
     type: str = "SoilSurvey"
@@ -122,7 +122,7 @@ class SoilSurvey:
 @dataclass
 class SoilDerivedRaster:
     id: str
-    refAgriParcel: Relationship
+    hasAgriParcel: Relationship
     soilProperty: TaggedProperty
     storageUri: TaggedProperty
     format: TaggedProperty

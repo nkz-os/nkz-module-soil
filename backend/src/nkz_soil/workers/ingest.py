@@ -122,7 +122,7 @@ def build_agri_soil_extended(
     return AgriSoilExtended(
         id=f"urn:ngsi-ld:AgriSoilExtended:{parcel_id}",
         location=GeoProperty(value=location),
-        refAgriParcel=Relationship(object=f"urn:ngsi-ld:AgriParcel:{parcel_id}"),
+        hasAgriParcel=Relationship(object=f"urn:ngsi-ld:AgriParcel:{parcel_id}"),
         horizons=TaggedProperty(
             value=merged_horizons,
             provided_by=hw.get("source_tag"),
