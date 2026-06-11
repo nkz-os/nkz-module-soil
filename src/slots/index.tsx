@@ -1,5 +1,6 @@
 import React from 'react';
 import { SoilPanel } from './SoilPanel';
+import { SoilProfileCard } from '../components/SoilProfileCard';
 import { SoilLayer } from '../components/slots/SoilLayer';
 import { SoilLayerToggle } from '../components/slots/SoilLayerToggle';
 import { SoilProvider } from '../services/soilLayerContext';
@@ -32,6 +33,8 @@ export const moduleSlots: ModuleViewerSlots = {
   ],
   'context-panel': [
     { id: 'soil-context-panel', moduleId: MODULE_ID, component: 'SoilPanel', priority: 10, localComponent: SoilPanel },
+    { id: 'soil-profile-card', moduleId: MODULE_ID, component: 'SoilProfileCard', priority: 5,
+      localComponent: SoilProfileCard, showWhen: { entityType: ['AgriParcel'] } },
   ],
   'bottom-panel': [],
   'entity-tree': [],

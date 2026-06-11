@@ -12,18 +12,32 @@ logger = logging.getLogger(__name__)
 
 # Map layer IDs to AgriSoil horizon property names
 _LAYER_PROPERTY_MAP = {
+    "soil-usda-texture": "usdaTextureClass",
     "soil-hydrologic-group": "hydrologicGroup",
     "soil-ksat": "ksatSaturated",
     "soil-clay": "clay",
     "soil-organic-carbon": "organicCarbon",
     "soil-ph": "ph",
     "soil-compaction": "relativeCompaction",
+    "soil-susceptibility": "compactionSusceptibilityScore",
 }
 
 router = APIRouter()
 
 MANIFEST = {
     "layers": [
+        {
+            "id": "soil-usda-texture",
+            "label": "USDA Soil Texture Class",
+            "category": "texture",
+            "type": "categorical",
+            "values": ["sand", "loamy-sand", "sandy-loam", "loam", "silt-loam", "silt",
+                       "sandy-clay-loam", "clay-loam", "silty-clay-loam", "sandy-clay", "silty-clay", "clay"],
+            "colorRamp": ["#e9d8a6", "#e6c878", "#d8a657", "#bb9457", "#a3b18a", "#8cb369",
+                          "#c98b5b", "#9c6644", "#7f9172", "#9e2a2b", "#6d597a", "#582f0e"],
+            "unit": None,
+            "depths": ["0-30", "30-60"],
+        },
         {
             "id": "soil-hydrologic-group",
             "label": "Hydrologic Group (SCS)",
@@ -83,6 +97,16 @@ MANIFEST = {
             "colorRamp": ["#1a9850", "#91cf60", "#fc8d59", "#d73027"],
             "unit": None,
             "depths": ["0-5", "5-15", "15-30", "30-60", "60-100"],
+        },
+        {
+            "id": "soil-susceptibility",
+            "label": "Compaction Susceptibility",
+            "category": "physical",
+            "type": "continuous",
+            "range": [0, 100],
+            "unit": "score",
+            "colorRamp": "RdYlGn-r",
+            "depths": ["0-30"],
         },
     ]
 }

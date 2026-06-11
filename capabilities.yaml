@@ -7,7 +7,7 @@ publishes:
     sdmStatus: draft-proposal
     sdmProposal: SDM-001
     scope: per-parcel
-    refRelationship: refAgriParcel
+    refRelationship: hasAgriParcel
     attributes:
       - name: clayContent
         unitCode: P1
@@ -103,7 +103,7 @@ publishes:
     sdmStatus: draft-proposal
     sdmProposal: SDM-002
     scope: per-point
-    refRelationship: refSoilSurvey
+    refRelationship: hasSoilSurvey
     attributes:
       - name: horizons
         unitCode: null
@@ -116,7 +116,7 @@ publishes:
     sdmStatus: draft-proposal
     sdmProposal: SDM-003
     scope: per-campaign
-    refRelationship: refAgriParcel
+    refRelationship: hasAgriParcel
     attributes:
       - name: pointCount
         unitCode: null
@@ -129,7 +129,7 @@ publishes:
     sdmStatus: draft-proposal
     sdmProposal: SDM-004
     scope: per-parcel
-    refRelationship: refAgriParcel
+    refRelationship: hasAgriParcel
     attributes:
       - name: storageUri
         unitCode: null
