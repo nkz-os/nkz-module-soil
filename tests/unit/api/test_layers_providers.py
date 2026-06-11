@@ -17,7 +17,7 @@ def test_layers_manifest(client):
     assert resp.status_code == 200
     data = resp.json()
     assert "layers" in data
-    assert len(data["layers"]) == 6
+    assert len(data["layers"]) == 8
     layer_ids = [layer["id"] for layer in data["layers"]]
     assert "soil-hydrologic-group" in layer_ids
     assert "soil-ksat" in layer_ids
