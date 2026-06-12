@@ -120,6 +120,50 @@ async def point_query(
         }
 
 
+@router.get("/penetrometer/{parcel_id}")
+@limiter.exempt
+async def penetrometer_readings(
+    parcel_id: str,
+    auth: AuthContext = require_auth(),
+):
+    """Return SoilSamplingPoint entities with penetrationResistance for a parcel."""
+    async with OrionClient(auth.tenant_id) as orion:
+        entities = await orion.query_entities(
+            type="SoilSamplingPoint",
+            q=parcel_ref_query(parcel_id),
+        )
+
+    points = []
+    for e in entities:
+        horizons = e.get("horizons", {}).get("value", [])
+        if not horizons:
+            continue
+        h = horizons[0]
+        pr = h.get("penetrationResistance")
+        if pr is None:
+            continue
+
+        loc = e.get("location", {}).get("value", {})
+        coords = loc.get("coordinates", [])
+        lat = coords[1] if len(coords) > 1 else None
+        lon = coords[0] if len(coords) > 0 else None
+
+        sd = e.get("samplingDate", {}).get("value")
+        date_str = sd[:10] if sd and isinstance(sd, str) else None
+
+        points.append({
+            "id": e.get("id"),
+            "lat": lat,
+            "lon": lon,
+            "depthFrom": h.get("depthFrom"),
+            "depthTo": h.get("depthTo"),
+            "resistance": pr,
+            "date": date_str,
+        })
+
+    return {"points": points}
+
+
 @router.get("/tenant/quota")
 @limiter.exempt
 async def tenant_quota(auth: AuthContext = require_auth()):
