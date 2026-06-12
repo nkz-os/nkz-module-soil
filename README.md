@@ -221,8 +221,8 @@ docker manifest inspect ghcr.io/nkz-os/nkz-module-soil/soil-api:latest \
 Then set `image: ghcr.io/nkz-os/nkz-module-soil/soil-api@<digest>` and `imagePullPolicy: IfNotPresent`.
 
 ```bash
-kubectl apply -f k8s/secret.yaml      # MinIO credentials (edit first)
-kubectl apply -f k8s/configmap.yaml   # Non-secret env vars
+kubectl apply -f k8s/sealed-secret.yaml   # MinIO + PG credentials (SealedSecret)
+kubectl apply -f k8s/configmap.yaml       # Non-secret env vars
 kubectl apply -f k8s/deployment-api.yaml
 kubectl apply -f k8s/deployment-worker.yaml
 kubectl apply -f k8s/service.yaml
