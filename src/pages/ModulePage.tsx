@@ -39,6 +39,7 @@ interface AgriSoilEntity {
   type: string;
   [key: string]: unknown;
   refAgriParcel?: { type: string; object: string };
+  hasAgriParcel?: { type: string; object: string };
   dataSource?: { type: string; value: string };
   uncertainty?: { type: string; value: number };
   horizons?: { type: string; value: SoilHorizon[] };
@@ -69,7 +70,7 @@ function TextureTriangle({ sand, silt, clay, textureClass }: {
 
   return (
     <div className="flex flex-col items-center">
-      <svg viewBox="0 0 100 90" className="w-32 h-28">
+      <svg viewBox="0 0 100 90" className="w-48 h-44">
         <polygon
           points="50,5 5,85 95,85"
           fill="none"
@@ -175,6 +176,11 @@ export default function ModulePage() {
   );
 }
 
+function getParcelId(soil: AgriSoilEntity): string {
+  const ref = (soil as any).hasAgriParcel?.object || soil.refAgriParcel?.object;
+  return ref?.split(':').pop() || soil.id;
+}
+
 // ─── Dashboard Tab ───────────────────────────────────────────────────────
 
 function DashboardTab() {
@@ -183,6 +189,7 @@ function DashboardTab() {
   const { data: soils, isLoading: soilsLoading } = useEntities<AgriSoilEntity>('AgriSoilExtended');
   const [selectedParcel, setSelectedParcel] = useState<string | null>(null);
   const [summary, setSummary] = useState<AgriSoilEntity | null>(null);
+  const [summaryError, setSummaryError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -201,7 +208,12 @@ function DashboardTab() {
   // Fetch summary when parcel selected
   useEffect(() => {
     if (selectedParcel) {
-      api.getSummary(selectedParcel).then((data: unknown) => setSummary(data as AgriSoilEntity)).catch(() => setSummary(null));
+      api.getSummary(selectedParcel)
+        .then((data: unknown) => { setSummary(data as AgriSoilEntity); setSummaryError(false); })
+        .catch(() => {
+          setSummary(null);
+          setSummaryError(true);
+        });
     }
   }, [selectedParcel, api]);
 
@@ -210,7 +222,7 @@ function DashboardTab() {
     if (!searchTerm) return soils;
     const lower = searchTerm.toLowerCase();
     return soils.filter(s => {
-      const parcelId = s.refAgriParcel?.object?.split(':').pop() || s.id;
+      const parcelId = getParcelId(s);
       const dataSource = s.dataSource?.value || '';
       return parcelId.toLowerCase().includes(lower) || String(dataSource).toLowerCase().includes(lower);
     });
@@ -241,8 +253,7 @@ function DashboardTab() {
         {filteredSoils && filteredSoils.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto pr-2">
             {filteredSoils.map((soil) => {
-              const parcelRef = soil.refAgriParcel;
-              const parcelId = parcelRef?.object?.split(':').pop() || soil.id;
+              const parcelId = getParcelId(soil);
               const dataSource = soil.dataSource?.value;
               const uncertainty = soil.uncertainty?.value;
               const horizonList = soil.horizons?.value || [];
@@ -284,7 +295,8 @@ function DashboardTab() {
             })}
           </div>
         ) : (
-          <div className="text-center py-8">
+          <div className="text-center py-12">
+            <div className="text-4xl mb-3 opacity-30">🧑‍🌾</div>
             <p className="text-nkz-muted text-nkz-sm">{t('dashboard.noSoilData')}</p>
             <p className="text-nkz-xs text-nkz-muted mt-2">{t('dashboard.noSoilHint')}</p>
           </div>
@@ -292,11 +304,22 @@ function DashboardTab() {
       </div>
 
       {/* Selected parcel detail */}
+      {summaryError && !summary && (
+        <div className="bg-nkz-surface rounded-nkz-md p-6">
+          <div className="text-center py-8">
+            <p className="text-nkz-danger text-nkz-sm">{t('error', 'Error loading soil data')}</p>
+            <button onClick={() => { setSummaryError(false); /* will refetch via useEffect */ }}
+                    className="mt-2 text-nkz-xs text-nkz-primary underline">
+              {t('retry', 'Retry')}
+            </button>
+          </div>
+        </div>
+      )}
       {summary && selectedParcel && (
         <div className="bg-nkz-surface rounded-nkz-md p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-nkz-lg font-medium">{t('dashboard.detail')}</h2>
-            <RefreshSoilButton parcelId={summary.refAgriParcel?.object?.split(':').pop() || ''} />
+            <RefreshSoilButton parcelId={getParcelId(summary)} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Texture triangle */}
@@ -309,6 +332,34 @@ function DashboardTab() {
                   clay={summary.horizons.value[0].clay}
                   textureClass={summary.horizons.value[0].usdaTextureClass}
                 />
+              </div>
+            )}
+
+            {/* Inline profile bars */}
+            {summary.horizons?.value && summary.horizons.value.length > 1 && (
+              <div className="col-span-full">
+                <h3 className="text-nkz-sm font-medium mb-2">{t('profile.title', 'Soil Profile')}</h3>
+                <div className="flex gap-1 h-16 items-end">
+                  {summary.horizons.value.map((h: SoilHorizon) => {
+                    const pct = ((h.depthTo - h.depthFrom) / 100) * 100;
+                    const colors = ['#e9d8a6','#e6c878','#d8a657','#bb9457','#a3b18a','#8cb369',
+                                    '#c98b5b','#9c6644','#7f9172','#9e2a2b','#6d597a','#582f0e'];
+                    const classes = ['sand','loamy-sand','sandy-loam','loam','silt-loam','silt',
+                                     'sandy-clay-loam','clay-loam','silty-clay-loam','sandy-clay','silty-clay','clay'];
+                    const idx = h.usdaTextureClass ? classes.indexOf(h.usdaTextureClass) % 12 : -1;
+                    const color = idx >= 0 ? colors[idx] : '#ccc';
+                    return (
+                      <div key={`bar-${h.depthFrom}-${h.depthTo}`}
+                           className="flex-1 rounded-t-md flex flex-col items-center justify-end"
+                           style={{ height: `${Math.max(pct, 3)}%`, backgroundColor: color, minHeight: '8px' }}
+                           title={`${h.depthFrom}–${h.depthTo} cm: ${h.usdaTextureClass || ''}`}>
+                        <span className="text-[8px] text-white mix-blend-difference font-medium px-0.5 truncate w-full text-center">
+                          {h.usdaTextureClass || ''}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
