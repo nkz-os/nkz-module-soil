@@ -110,8 +110,8 @@ export function PenetrometerForm({ parcelId }: Props) {
                 method: string;
             }>(`/v1/soil/parcel/${parcelId}/rasterize?property=penetrationResistance&depth=${depth}&resolution=5`);
             setRasterUrl(resp.url);
-        } catch (e: any) {
-            setError(e?.message || 'Raster generation failed');
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : 'Raster generation failed');
         } finally {
             setRasterizing(false);
         }

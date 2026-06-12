@@ -177,7 +177,7 @@ export default function ModulePage() {
 }
 
 function getParcelId(soil: AgriSoilEntity): string {
-  const ref = (soil as any).hasAgriParcel?.object || soil.refAgriParcel?.object;
+  const ref = soil.hasAgriParcel?.object || soil.refAgriParcel?.object;
   return ref?.split(':').pop() || soil.id;
 }
 
