@@ -10,6 +10,9 @@ REDIS_URL = os.environ["REDIS_URL"]
 CONTEXT_URL = os.environ["CONTEXT_URL"]
 ORION_WEBHOOK_SECRET = os.getenv("ORION_WEBHOOK_SECRET", "")
 
+# Internal service-to-service auth (shared with api-gateway via SealedSecret)
+INTERNAL_SERVICE_SECRET = os.environ.get("INTERNAL_SERVICE_SECRET", "")
+
 CACHE_TTL_BASELINE = int(os.environ.get("CACHE_TTL_BASELINE", "31536000"))
 CACHE_TTL_REVISABLE = int(os.environ.get("CACHE_TTL_REVISABLE", "2592000"))
 INGESTION_BUFFER_M = float(os.environ.get("INGESTION_BUFFER_M", "50.0"))

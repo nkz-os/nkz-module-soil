@@ -66,6 +66,10 @@ def create_app() -> FastAPI:
 
     app.state.limiter = limiter
 
+    # Internal service-to-service routes — registered without JWT middleware
+    from nkz_soil.api.routes.internal import router as internal_router
+
+    app.include_router(internal_router, prefix="/v1/soil/internal")
     app.include_router(capabilities_router)
     app.include_router(reading_router, prefix="/v1/soil")
     app.include_router(writing_router, prefix="/v1/soil")
