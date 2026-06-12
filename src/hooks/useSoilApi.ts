@@ -29,6 +29,10 @@ export function useSoilApi() {
   const api = useAPI();
 
   return {
+    // Expose raw get/post for consumers that need generic HTTP access
+    get: api.get.bind(api),
+    post: api.post.bind(api),
+
     getSummary: (parcelId: string) =>
       api.get<SoilSummary>(`/parcel/${parcelId}/summary`),
 

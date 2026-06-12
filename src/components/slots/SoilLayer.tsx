@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useViewerOptional } from '@nekazari/sdk';
 import { useSoilLayerContext } from '../../services/soilLayerContext';
 import { useSoilApi } from '../../hooks/useSoilApi';
@@ -14,7 +14,6 @@ export function SoilLayer() {
   const { attribute, visible, opacity, scope, setStatus } = useSoilLayerContext();
   const dsRef = useRef<any>(null);
   const imageryRef = useRef<any>(null);
-  const [rasterUrl, setRasterUrl] = useState<string | null>(null);
 
   const isRaster = RASTER_ATTRIBUTES.includes(attribute);
 
@@ -29,7 +28,6 @@ export function SoilLayer() {
       try { viewer.imageryLayers.remove(imageryRef.current, true); } catch { /* destroyed */ }
       imageryRef.current = null;
     }
-    setRasterUrl(null);
 
     if (!visible) { setStatus('idle'); return; }
 
@@ -45,7 +43,6 @@ export function SoilLayer() {
     api.get<{ url: string }>(`/v1/soil/parcel/${parcel}/raster?property=${attribute}&depth=0-30`)
       .then((data) => {
         if (cancelled || viewer.isDestroyed()) return;
-        setRasterUrl(data.url);
         const layer = viewer.imageryLayers.addImageryProvider(
           new Cesium.SingleTileImageryProvider({ url: data.url })
         );
