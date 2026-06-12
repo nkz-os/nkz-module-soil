@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from nkz_platform_sdk import AuthContext
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.api.limiter import limiter
-from nkz_soil.config import CONTEXT_URL, ORION_WEBHOOK_SECRET
+from nkz_soil.config import CONTEXT_URL, INGESTION_BUFFER_M, ORION_WEBHOOK_SECRET, SOIL_INGEST_TTL
 from nkz_soil.storage.orion import OrionClient
 
 logger = logging.getLogger(__name__)
@@ -17,8 +17,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 SUBSCRIPTION_ID = "urn:ngsi-ld:Subscription:soil-parcel-ingest"
-
-INGESTION_BUFFER_M = float(os.environ.get("INGESTION_BUFFER_M", "50.0"))
 
 
 class OrionNotification(BaseModel):
@@ -59,9 +57,9 @@ async def _is_already_processed(redis, parcel_hash: str) -> bool:
     return await redis.exists(key) == 1
 
 
-async def _mark_processed(redis, parcel_hash: str, ttl: int = 86400) -> None:
+async def _mark_processed(redis, parcel_hash: str) -> None:
     key = f"soil:ingested:{parcel_hash}"
-    await redis.set(key, datetime.now(timezone.utc).isoformat(), ex=ttl)
+    await redis.set(key, datetime.now(timezone.utc).isoformat(), ex=SOIL_INGEST_TTL)
 
 
 def _expand_geometry(geometry: dict, buffer_m: float) -> dict:

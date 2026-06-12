@@ -537,6 +537,7 @@ def _parse_redis_url(url: str) -> RedisSettings:
 
 class WorkerSettings:
     functions = [ingest_parcel, reap_stuck_jobs]
+    cron_jobs = [("* */1 * * *", reap_stuck_jobs)]  # every hour
     redis_settings = _parse_redis_url(REDIS_URL)
     on_startup = startup
     on_shutdown = shutdown

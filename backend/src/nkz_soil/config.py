@@ -16,6 +16,13 @@ INTERNAL_SERVICE_SECRET = os.environ.get("INTERNAL_SERVICE_SECRET", "")
 CACHE_TTL_BASELINE = int(os.environ.get("CACHE_TTL_BASELINE", "31536000"))
 CACHE_TTL_REVISABLE = int(os.environ.get("CACHE_TTL_REVISABLE", "2592000"))
 INGESTION_BUFFER_M = float(os.environ.get("INGESTION_BUFFER_M", "50.0"))
+
+# Tier/quota — bridge until integrated with admin_platform.tenant_limits + tier_quotas.py
+SOIL_DEFAULT_CONTRACTED_HA = int(os.environ.get("SOIL_DEFAULT_CONTRACTED_HA", "0"))
+
+# Ingest dedup TTL (seconds). 3 days default for slow workers.
+SOIL_INGEST_TTL = int(os.environ.get("SOIL_INGEST_TTL", "259200"))
+
 PROVIDER_RETRY_MAX = int(os.environ.get("PROVIDER_RETRY_MAX", "5"))
 PROVIDER_ISOLATE_SECONDS = int(os.environ.get("PROVIDER_ISOLATE_SECONDS", "900"))
 

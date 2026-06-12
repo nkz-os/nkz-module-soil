@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query
 from nkz_platform_sdk import AuthContext
 from nkz_soil.api.dependencies import require_auth
 from nkz_soil.api.limiter import limiter
+from nkz_soil.config import SOIL_DEFAULT_CONTRACTED_HA
 from nkz_soil.api.routes import providers as provider_routes
 from nkz_soil.models.domain import DepthInterval
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
@@ -199,7 +200,8 @@ async def tenant_quota(auth: AuthContext = require_auth()):
     return {
         "tenantId": auth.tenant_id,
         "evaluatedHectares": evaluated_ha,
-        "contractedHectares": 0,  # TODO: configurable per tenant
+        "contractedHectares": SOIL_DEFAULT_CONTRACTED_HA,
+        # NOTE: This is a bridge until integrated with admin_platform.tenant_limits + tier_quotas.py
         "soilEntities": len(entities),
     }
 
