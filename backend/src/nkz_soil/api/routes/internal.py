@@ -29,7 +29,7 @@ def _validate_internal_secret(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Invalid internal service secret")
 
 
-@router.post("/setup-parcel")
+@router.post("/setup-parcel", status_code=202)
 async def setup_parcel(request: Request):
     """Trigger soil ingest for a parcel.
 
