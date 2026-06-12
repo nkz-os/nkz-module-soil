@@ -73,7 +73,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Type check
-        run: pnpm run typecheck || true
+        run: pnpm run typecheck
+
+      - name: Frontend unit tests
+        run: pnpm run test
 
       - name: Build MF2 bundle
         run: pnpm run build:module
