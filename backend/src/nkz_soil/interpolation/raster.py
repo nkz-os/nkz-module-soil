@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import logging
 import uuid
+from datetime import datetime, timezone
 
 import numpy as np
 
@@ -124,7 +125,7 @@ async def generate_raster(
         "format": {"type": "Property", "value": "COG"},
         "crs": {"type": "Property", "value": "EPSG:4326"},
         "resolution": {"type": "Property", "value": resolution_m},
-        "generatedAt": {"type": "Property", "value": None},  # TODO: set ISO timestamp
+        "generatedAt": {"type": "Property", "value": datetime.now(timezone.utc).isoformat()},
         "uncertainty": {"type": "Property", "value": _estimate_uncertainty(method, len(coords))},
         "parcelVersionId": {"type": "Property", "value": "v1"},
     }
@@ -152,76 +153,42 @@ def _array_to_cog(
 
     Uses rasterio if available, falls back to a minimal TIFF header.
     """
-    try:
-        import rasterio
-        from rasterio.transform import from_origin
-        from rasterio.crs import CRS
-        from rasterio.enums import Resampling
+    import rasterio
+    from rasterio.transform import from_origin
+    from rasterio.crs import CRS
+    from rasterio.enums import Resampling
 
-        n_rows, n_cols = data.shape
-        transform = from_origin(min_x, max_y, resolution, resolution)
-
-        buf = io.BytesIO()
-        with rasterio.open(
-            buf,
-            "w",
-            driver="GTiff",
-            height=n_rows,
-            width=n_cols,
-            count=1,
-            dtype=data.dtype,
-            crs=CRS.from_epsg(4326),
-            transform=transform,
-            tiled=True,  # COG requirement
-            blockxsize=256,
-            blockysize=256,
-            compress="deflate",
-            interleave="band",
-        ) as dst:
-            dst.write(data.astype(data.dtype), 1)
-            # Build overviews for COG
-            dst.build_overviews(
-                [2, 4, 8, 16],
-                resampling=Resampling.nearest,
-            )
-            # Tag as COG
-            dst.update_tags(ns="rio_overview", resampling="nearest")
-
-        return buf.getvalue()
-
-    except ImportError:
-        logger.warning("rasterio not installed, using minimal TIFF fallback")
-        return _minimal_tiff(data, min_x, max_y, resolution)
-
-
-def _minimal_tiff(
-    data: np.ndarray,
-    min_x: float,
-    max_y: float,
-    resolution: float,
-) -> bytes:
-    """Fallback: write a basic TIFF without rasterio.
-
-    This is NOT a COG but allows the pipeline to function.
-    """
-    # Minimal TIFF header + data (very simplified)
-    # In practice, rasterio should always be available in production
     n_rows, n_cols = data.shape
-    header = bytearray()
-    # Byte order (little-endian)
-    header.extend(b"II")
-    # TIFF magic
-    header.extend(b"\x2a\x00")
-    # IFD offset
-    header.extend(b"\x08\x00\x00\x00")
-    # Number of directory entries
-    header.extend(b"\x0c\x00")
-    # ... (simplified — real implementation needs full TIFF spec)
-    # This is a placeholder; rasterio is the production path
-    raise RuntimeError(
-        "rasterio is required for raster generation. "
-        "Install with: pip install nkz-soil[geo]"
-    )
+    transform = from_origin(min_x, max_y, resolution, resolution)
+
+    buf = io.BytesIO()
+    with rasterio.open(
+        buf,
+        "w",
+        driver="GTiff",
+        height=n_rows,
+        width=n_cols,
+        count=1,
+        dtype=data.dtype,
+        crs=CRS.from_epsg(4326),
+        transform=transform,
+        tiled=True,  # COG requirement
+        blockxsize=256,
+        blockysize=256,
+        compress="deflate",
+        interleave="band",
+    ) as dst:
+        dst.write(data.astype(data.dtype), 1)
+        # Build overviews for COG
+        dst.build_overviews(
+            [2, 4, 8, 16],
+            resampling=Resampling.nearest,
+        )
+        # Tag as COG
+        dst.update_tags(ns="rio_overview", resampling="nearest")
+
+    return buf.getvalue()
+
 
 
 def _estimate_uncertainty(method: str, n_points: int) -> float:
