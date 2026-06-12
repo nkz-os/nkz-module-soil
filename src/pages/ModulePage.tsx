@@ -707,6 +707,7 @@ function HistoryTab() {
   const { data: surveys, isLoading: surveysLoading } = useEntities<NgsiLdEntity>('SoilSurvey');
   const { data: samplingPoints, isLoading: pointsLoading } = useEntities<NgsiLdEntity>('SoilSamplingPoint');
   const [expandedSurvey, setExpandedSurvey] = useState<string | null>(null);
+  const [sortDesc, setSortDesc] = useState(true);
 
   const loading = surveysLoading || pointsLoading;
 
@@ -721,10 +722,28 @@ function HistoryTab() {
   const surveyList = surveys || [];
   const pointsList = samplingPoints || [];
 
+  const sortedSurveys = [...surveyList].sort((a, b) => {
+    const dateA = (a as any).startDate?.value || '';
+    const dateB = (b as any).startDate?.value || '';
+    return sortDesc ? dateB.localeCompare(dateA) : dateA.localeCompare(dateB);
+  });
+
+  const sortedPoints = [...pointsList].sort((a, b) => {
+    const dateA = (a as any).samplingDate?.value || '';
+    const dateB = (b as any).samplingDate?.value || '';
+    return sortDesc ? dateB.localeCompare(dateA) : dateA.localeCompare(dateB);
+  });
+
   if (surveyList.length === 0 && pointsList.length === 0) {
     return (
       <div className="bg-nkz-surface rounded-nkz-md p-6">
-        <h2 className="text-nkz-lg font-medium mb-4">{t('tabs.history')}</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-nkz-lg font-medium">{t('tabs.history')}</h2>
+          <button onClick={() => setSortDesc(d => !d)}
+                  className="text-nkz-xs text-nkz-muted hover:text-nkz-primary">
+            {sortDesc ? '↓ newest' : '↑ oldest'}
+          </button>
+        </div>
         <div className="text-center py-8">
           <p className="text-nkz-muted text-nkz-sm">{t('history.noData')}</p>
           <p className="text-nkz-xs text-nkz-muted mt-2">{t('history.noDataHint')}</p>
@@ -738,7 +757,13 @@ function HistoryTab() {
       {/* Surveys */}
       {surveyList.length > 0 && (
         <div className="bg-nkz-surface rounded-nkz-md p-6">
-          <h2 className="text-nkz-lg font-medium mb-4">{t('history.surveys')}</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-nkz-lg font-medium">{t('history.surveys')}</h2>
+            <button onClick={() => setSortDesc(d => !d)}
+                    className="text-nkz-xs text-nkz-muted hover:text-nkz-primary">
+              {sortDesc ? '↓ newest' : '↑ oldest'}
+            </button>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-nkz-sm">
               <thead>
@@ -750,7 +775,7 @@ function HistoryTab() {
                 </tr>
               </thead>
               <tbody>
-                {surveyList.map((survey) => {
+                {sortedSurveys.map((survey) => {
                   const s = survey as Record<string, Record<string, unknown> | undefined>;
                   const surveyType = s.surveyType;
                   const startDate = s.startDate;
@@ -838,7 +863,7 @@ function HistoryTab() {
                 </tr>
               </thead>
               <tbody>
-                {pointsList.map((p) => {
+                {sortedPoints.map((p) => {
                   const ps = p as Record<string, Record<string, unknown> | undefined>;
                   const loc = ps.location;
                   const coords = (loc?.value as Record<string, unknown>)?.coordinates as number[] | undefined;

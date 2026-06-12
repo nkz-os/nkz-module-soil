@@ -31,13 +31,14 @@ export function PenetrometerForm({ parcelId }: Props) {
     const [lon, setLon] = useState('');
 
     const fetchReadings = useCallback(async () => {
+        if (!parcelId) return;
         try {
-            const data = await api.get<{ points?: Array<Record<string, unknown>> }>(
+            const data = await api.get<{ points: PenetrometerReading[] }>(
                 `/v1/soil/penetrometer/${parcelId}`
             );
-            // Fallback: we don't have a dedicated endpoint yet, so we'll use local state for now
+            setReadings(data.points || []);
         } catch {
-            // OK if endpoint doesn't exist yet
+            // Endpoint may not exist yet in older deployments; local state takes over
         }
     }, [parcelId, api]);
 
@@ -92,8 +93,8 @@ export function PenetrometerForm({ parcelId }: Props) {
             };
             setReadings(prev => [...prev, newReading]);
             setResistance('');
-        } catch (e: any) {
-            setError(e?.message || 'Error saving reading');
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : 'Error saving reading');
         } finally {
             setLoading(false);
         }
