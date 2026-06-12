@@ -138,15 +138,18 @@ async def penetrometer_readings(
         horizons = e.get("horizons", {}).get("value", [])
         if not horizons:
             continue
+        # Penetrometer readings use a single depth interval per sampling point.
+        # Use the first horizon; higher-depth readings require a separate point.
         h = horizons[0]
         pr = h.get("penetrationResistance")
-        if pr is None:
+        if pr is None or not isinstance(pr, (int, float)):
             continue
 
         loc = e.get("location", {}).get("value", {})
         coords = loc.get("coordinates", [])
-        lat = coords[1] if len(coords) > 1 else None
-        lon = coords[0] if len(coords) > 0 else None
+        if len(coords) < 2:
+            continue
+        lon, lat = coords[0], coords[1]
 
         sd = e.get("samplingDate", {}).get("value")
         date_str = sd[:10] if sd and isinstance(sd, str) else None
