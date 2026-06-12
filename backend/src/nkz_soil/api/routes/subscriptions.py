@@ -102,6 +102,10 @@ def _expand_geometry(geometry: dict, buffer_m: float) -> dict:
     return geometry
 
 
+# Public alias for cross-module use (internal route, etc.)
+expand_geometry = _expand_geometry
+
+
 @router.post("/webhooks/orion")
 @limiter.exempt
 async def orion_webhook(request: Request):

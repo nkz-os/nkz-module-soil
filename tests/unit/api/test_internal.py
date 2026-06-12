@@ -58,3 +58,33 @@ async def test_setup_parcel_missing_body_fields_returns_422(with_secret):
             headers={"X-Internal-Service-Secret": "test-secret-123"},
         )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_setup_parcel_happy_path_with_geometry(with_secret):
+    """Happy path: valid secret + geometry → 202 + enqueued job."""
+    from unittest.mock import AsyncMock
+
+    redis_mock = AsyncMock()
+    redis_mock.enqueue_job = AsyncMock(return_value=None)
+    app.state.redis = redis_mock
+
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/soil/internal/setup-parcel",
+                json={
+                    "parcelId": "test123",
+                    "tenantId": "tenant1",
+                    "geometry": {"type": "Point", "coordinates": [-2.0, 42.0]},
+                },
+                headers={"X-Internal-Service-Secret": "test-secret-123"},
+            )
+        assert resp.status_code == 202
+        data = resp.json()
+        assert data["parcelId"] == "test123"
+        assert data["status"] == "accepted"
+        redis_mock.enqueue_job.assert_awaited_once()
+    finally:
+        app.state.redis = None

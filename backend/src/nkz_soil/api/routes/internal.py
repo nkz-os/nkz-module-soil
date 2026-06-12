@@ -62,10 +62,10 @@ async def setup_parcel(request: Request):
                 detail=f"Cannot resolve geometry for parcel {parcel_id}",
             )
 
-    from nkz_soil.api.routes.subscriptions import _expand_geometry
+    from nkz_soil.api.routes.subscriptions import expand_geometry
     from nkz_soil.config import INGESTION_BUFFER_M
 
-    expanded_geometry = _expand_geometry(geometry, INGESTION_BUFFER_M)
+    expanded_geometry = expand_geometry(geometry, INGESTION_BUFFER_M)
 
     redis = get_redis_pool(request)
     await redis.enqueue_job(
