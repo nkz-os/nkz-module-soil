@@ -167,7 +167,7 @@ async def orion_webhook(request: Request):
 
 
 @router.post("/subscriptions/register")
-async def register_subscription(auth: AuthContext = require_auth(roles=["Administrador"])):
+async def register_subscription(auth: AuthContext = require_auth(roles=["GestorAgricola", "Administrador"])):
     subscription = {
         "id": SUBSCRIPTION_ID,
         "type": "Subscription",
@@ -196,7 +196,7 @@ async def register_subscription(auth: AuthContext = require_auth(roles=["Adminis
 
 @router.get("/subscriptions/status")
 @limiter.exempt
-async def subscription_status(auth: AuthContext = require_auth(roles=["Administrador"])):
+async def subscription_status(auth: AuthContext = require_auth(roles=["GestorAgricola", "Administrador"])):
     async with OrionClient(auth.tenant_id) as orion:
         try:
             entity = await orion.get_subscription(SUBSCRIPTION_ID)
