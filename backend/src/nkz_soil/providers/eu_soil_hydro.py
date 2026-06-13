@@ -54,6 +54,8 @@ class EuSoilHydroGridsProvider:
             uncertainty=0.20,
             geometry=geometry,
             attribution="JRC ESDAC EU-SoilHydroGrids v1.0 (non-commercial use only)",
+            license="JRC-ESDAC-NonCommercial",
+            redistributable=False,
         )
 
     async def health(self) -> ProviderHealth:

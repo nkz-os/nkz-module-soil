@@ -119,9 +119,6 @@ def test_tenant_quota_no_entities(client, mock_orion):
 async def test_penetrometer_readings_returns_filtered_points():
     """Only SoilSamplingPoint entities with penetrationResistance are returned."""
     # This is a unit-like test that mocks OrionClient behavior
-    from nkz_soil.api.routes.reading import router
-    from nkz_platform_sdk import AuthContext
-    from nkz_soil.storage.orion import OrionClient
 
     # Simple mock asserting the flow works
     assert True  # placeholder — real mock will need OrionClient monkeypatch

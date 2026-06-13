@@ -306,14 +306,21 @@ async def point_texture(
     # SCS hydrologic group
     hg = scs_hydrologic_group(ptf["ksat"])
 
+    # License boundary (mirrors workers/ingest.py::_emit_raw): when the winning
+    # provider is non-redistributable (e.g. JRC LUCAS texture raster), the RAW
+    # fractions are withheld even though they were used for the pedotransfer.
+    # Derived products (usdaTextureClass, Saxton-Rawls hydraulics, SCS group)
+    # are new works under the license and remain served.
+    redistributable = getattr(result, "redistributable", True)
+
     return {
         "point": {"lat": lat, "lon": lon},
         "depth": {"from": depth_from, "to": depth_to},
         "texture": {
-            "sand": sand,
-            "clay": clay,
-            "silt": silt,
-            "organicCarbon": oc,
+            "sand": sand if redistributable else None,
+            "clay": clay if redistributable else None,
+            "silt": silt if redistributable else None,
+            "organicCarbon": oc if redistributable else None,
             "usdaTextureClass": tc,
         },
         "hydraulic": {
