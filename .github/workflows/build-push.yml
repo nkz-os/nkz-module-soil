@@ -48,8 +48,11 @@ jobs:
       - name: Lint (ruff)
         run: ruff check backend/src/nkz_soil/ tests/
 
-      - name: Run unit tests
-        run: PYTHONPATH=backend/src pytest tests/unit/ -v --tb=short
+      - name: Run tests
+        # Full suite — the license suppression-boundary, provider and worker
+        # suites live outside tests/unit/ and MUST gate (a leak of
+        # non-redistributable JRC fractions is a legal exposure).
+        run: PYTHONPATH=backend/src pytest tests/ -v --tb=short
 
   # ==========================================================================
   # Build frontend MF2 bundle
