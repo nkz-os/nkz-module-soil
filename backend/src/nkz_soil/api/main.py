@@ -12,6 +12,7 @@ from nkz_soil.api.routes.metrics import router as metrics_router
 from nkz_soil.api.routes.providers import router as providers_router, set_registry
 from nkz_soil.api.routes.reading import router as reading_router
 from nkz_soil.api.routes.subscriptions import router as subscriptions_router
+from nkz_soil.api.routes.water_budget import router as water_budget_router
 from nkz_soil.api.routes.writing import router as writing_router
 from nkz_soil.config import REDIS_URL
 from nkz_soil.providers.base import ProviderRegistry
@@ -76,6 +77,7 @@ def create_app() -> FastAPI:
     app.include_router(layers_router, prefix="/v1/soil")
     app.include_router(providers_router, prefix="/v1/soil")
     app.include_router(subscriptions_router, prefix="/v1/soil")
+    app.include_router(water_budget_router, prefix="/v1/soil")
     app.include_router(metrics_router, prefix="/v1/soil")
 
     @app.get("/health")
