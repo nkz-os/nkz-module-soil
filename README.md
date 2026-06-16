@@ -283,4 +283,3 @@ Apache 2.0 — See [LICENSE](LICENSE)
 - [FIWARE NGSI-LD](https://fiware-orion.readthedocs.io/)
 - [ISRIC SoilGrids 2.0](https://soilgrids.org)
 - [Nekazari Platform](https://github.com/nkz-os/nkz)
-# trigger CI
