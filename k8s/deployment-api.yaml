@@ -24,8 +24,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: soil-module-config
+                optional: true
             - secretRef:
                 name: soil-module-secret
+                optional: false
           env:
             # pg-dsn has a hyphen, so envFrom secretRef cannot expose it as an env
             # var (invalid name) — map it explicitly. PG-backed provider health needs it.

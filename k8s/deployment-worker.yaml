@@ -20,8 +20,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: soil-module-config
+                optional: true
             - secretRef:
                 name: soil-module-secret
+                optional: false
           env:
             # pg-dsn has a hyphen, so envFrom secretRef cannot expose it as an env
             # var (invalid name) — map it explicitly. The worker cascade needs it.
@@ -45,6 +47,8 @@ spec:
               value: "http://minio-service:9000"
             - name: CONTEXT_URL
               value: "http://api-gateway-service:5000/ngsi-ld-context.json"
+            - name: SOIL_DEFAULT_TENANT
+              value: "platform"
           resources:
             requests:
               cpu: 100m
