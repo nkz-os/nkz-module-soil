@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: ghcr.io/nkz-os/nkz-module-soil/soil-worker@sha256:c776fdb65c2f9463082b2e2a109f41d9f85c361c325cebaa009bd3eea6694083
+          image: ghcr.io/nkz-os/nkz-module-soil/soil-worker@sha256:fb15aa13df6c7641f846fc8b666e912c30b5c180266e2a587c5f2679c0249c00
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
