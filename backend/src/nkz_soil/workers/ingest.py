@@ -4,6 +4,7 @@ import time
 from dataclasses import dataclass
 
 from arq.connections import RedisSettings
+from arq.cron import CronJob
 
 from nkz_soil.config import REDIS_URL
 from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
@@ -536,8 +537,23 @@ def _parse_redis_url(url: str) -> RedisSettings:
 
 
 class WorkerSettings:
-    functions = [ingest_parcel, reap_stuck_jobs]
-    cron_jobs = [("* */1 * * *", reap_stuck_jobs)]  # every hour
+    functions = [ingest_parcel]
+    cron_jobs = [
+        CronJob(
+            name="reap_stuck_jobs",
+            coroutine=reap_stuck_jobs,
+            hour=1,
+            minute=0,
+            second=0,
+            run_at_startup=False,
+            unique=True,
+            job_id="reap_stuck_jobs",
+            timeout_s=300,
+            keep_result_s=3600,
+            keep_result_forever=False,
+            max_tries=3,
+        ),
+    ]
     redis_settings = _parse_redis_url(REDIS_URL)
     on_startup = startup
     on_shutdown = shutdown
