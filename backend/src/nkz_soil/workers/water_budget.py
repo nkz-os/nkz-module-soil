@@ -15,6 +15,7 @@ from typing import Optional
 
 import httpx
 
+from nkz_soil.config import SOIL_DEFAULT_TENANT
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.storage.orion import OrionClient
 
@@ -29,96 +30,105 @@ WEATHER_API_BASE = "https://nkz.robotika.cloud/api/weather-map"
 
 
 async def compute_water_budgets(ctx: dict) -> dict:
-    """Main worker entry point. Called by Arq scheduler every 6h."""
-    orion = ctx.get("orion_client")
-    if not orion:
-        raise RuntimeError("No OrionClient in worker context")
+    """Main worker entry point. Called by Arq scheduler every 6h.
 
-    stats = {"processed": 0, "errors": 0, "skipped": 0}
+    Processes all AgriSoil entities for the configured default tenant.
+    The tenant is read from the SOIL_DEFAULT_TENANT env var.
+    """
+    tenant_id = SOIL_DEFAULT_TENANT
+    orion = OrionClient(tenant_id)
+    try:
+        stats = {"processed": 0, "errors": 0, "skipped": 0}
 
-    entities = await orion.query_entities(type="AgriSoil")
-    logger.info("Found %d AgriSoil entities", len(entities))
+        entities = await orion.query_entities(type="AgriSoil")
+        logger.info(
+            "Tenant '%s': found %d AgriSoil entities",
+            tenant_id, len(entities),
+        )
 
-    for entity in entities:
-        try:
-            horizons = entity.get("horizons", {}).get("value", [])
-            if not horizons:
-                stats["skipped"] += 1
-                continue
+        for entity in entities:
+            try:
+                horizons = entity.get("horizons", {}).get("value", [])
+                if not horizons:
+                    stats["skipped"] += 1
+                    continue
 
-            h = horizons[0]
-            sand = h.get("sand")
-            clay = h.get("clay")
-            if sand is None or clay is None:
-                stats["skipped"] += 1
-                continue
+                h = horizons[0]
+                sand = h.get("sand")
+                clay = h.get("clay")
+                if sand is None or clay is None:
+                    stats["skipped"] += 1
+                    continue
 
-            oc = h.get("organicCarbon", 0.5)
-            ptf = saxton_rawls_2006(sand, clay, oc)
-            fc = ptf["field_capacity"]
-            pwp = ptf["wilting_point"]
-            awc = round(max(0.0, fc - pwp), 3)
+                oc = h.get("organicCarbon", 0.5)
+                ptf = saxton_rawls_2006(sand, clay, oc)
+                fc = ptf["field_capacity"]
+                pwp = ptf["wilting_point"]
+                awc = round(max(0.0, fc - pwp), 3)
 
-            current_moisture = await _get_current_moisture(orion, entity["id"])
-            if current_moisture is None:
-                current_moisture = fc * 0.8
+                current_moisture = await _get_current_moisture(orion, entity["id"])
+                if current_moisture is None:
+                    current_moisture = fc * 0.8
 
-            deficit_mm = max(0.0, (fc - current_moisture) * 100)
+                deficit_mm = max(0.0, (fc - current_moisture) * 100)
 
-            parcel_ref = entity.get("hasAgriParcel", {}).get("object", "")
-            forecast = await _get_et0_forecast(parcel_ref)
-            if not forecast:
-                forecast = _default_forecast()
+                parcel_ref = entity.get("hasAgriParcel", {}).get("object", "")
+                forecast = await _get_et0_forecast(parcel_ref)
+                if not forecast:
+                    forecast = _default_forecast()
 
-            projected = _compute_projection(current_moisture, fc, pwp, forecast)
+                projected = _compute_projection(current_moisture, fc, pwp, forecast)
 
-            depletion = (fc - current_moisture) / awc if awc > 0 else 0
-            reco = _generate_recommendation(depletion, projected, fc, awc)
+                depletion = (fc - current_moisture) / awc if awc > 0 else 0
+                reco = _generate_recommendation(depletion, projected, fc, awc)
 
-            attrs = {
-                "fieldCapacity": {"type": "Property", "value": round(fc, 3), "unitCode": "P1"},
-                "wiltingPoint": {"type": "Property", "value": round(pwp, 3), "unitCode": "P1"},
-                "awc": {"type": "Property", "value": awc, "unitCode": "P1"},
-                "currentMoisture": {
-                    "type": "Property",
-                    "value": round(current_moisture, 3),
-                    "unitCode": "P1",
-                },
-                "deficitMm": {
-                    "type": "Property",
-                    "value": round(deficit_mm, 1),
-                    "unitCode": "MMT",
-                },
-                "forecast7d": {"type": "Property", "value": projected},
-                "lastComputed": {
-                    "type": "Property",
-                    "value": {
-                        "@type": "DateTime",
-                        "@value": datetime.now(timezone.utc).isoformat(),
+                attrs = {
+                    "fieldCapacity": {"type": "Property", "value": round(fc, 3), "unitCode": "P1"},
+                    "wiltingPoint": {"type": "Property", "value": round(pwp, 3), "unitCode": "P1"},
+                    "awc": {"type": "Property", "value": awc, "unitCode": "P1"},
+                    "currentMoisture": {
+                        "type": "Property",
+                        "value": round(current_moisture, 3),
+                        "unitCode": "P1",
                     },
-                },
-            }
-            if reco is not None:
-                attrs["irrigationRecommendation"] = {
-                    "type": "Property",
-                    "value": reco,
+                    "deficitMm": {
+                        "type": "Property",
+                        "value": round(deficit_mm, 1),
+                        "unitCode": "MMT",
+                    },
+                    "forecast7d": {"type": "Property", "value": projected},
+                    "lastComputed": {
+                        "type": "Property",
+                        "value": {
+                            "@type": "DateTime",
+                            "@value": datetime.now(timezone.utc).isoformat(),
+                        },
+                    },
                 }
+                if reco is not None:
+                    attrs["irrigationRecommendation"] = {
+                        "type": "Property",
+                        "value": reco,
+                    }
 
-            await orion.patch_entity(entity["id"], attrs)
-            stats["processed"] += 1
+                await orion.patch_entity(entity["id"], attrs)
+                stats["processed"] += 1
 
-        except Exception as e:
-            logger.error("Failed to compute water budget for %s: %s", entity.get("id"), e)
-            stats["errors"] += 1
+            except Exception as e:
+                logger.error(
+                    "Failed to compute water budget for %s: %s",
+                    entity.get("id"), e,
+                )
+                stats["errors"] += 1
 
-    logger.info("Water budget complete: %s", stats)
-    return stats
+        logger.info("Water budget complete: %s", stats)
+        return stats
+    finally:
+        await orion.close()
 
 
 async def _get_current_moisture(orion: OrionClient, entity_id: str) -> Optional[float]:
     """Try to get current soil moisture from IoT sensor or timeseries."""
-    # TODO: query TimescaleDB for latest moisture reading linked to this AgriSoil
-    # For MVP, return None (will fall back to FC * 0.8)
     return None
 
 

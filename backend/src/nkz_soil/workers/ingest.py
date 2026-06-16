@@ -7,6 +7,7 @@ from arq.connections import RedisSettings
 from arq.cron import CronJob
 
 from nkz_soil.config import REDIS_URL
+from nkz_soil.workers.water_budget import compute_water_budgets
 from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
@@ -147,6 +148,7 @@ async def startup(ctx: dict) -> None:
     ctx["cache"] = ProviderCache(redis_url=REDIS_URL)
 
 
+
 async def shutdown(ctx: dict) -> None:
     cb: RedisCircuitBreaker | None = ctx.get("circuit_breaker")
     if cb:
@@ -154,6 +156,7 @@ async def shutdown(ctx: dict) -> None:
     cache: ProviderCache | None = ctx.get("cache")
     if cache:
         await cache.close()
+
 
 
 async def ingest_parcel(
@@ -537,7 +540,7 @@ def _parse_redis_url(url: str) -> RedisSettings:
 
 
 class WorkerSettings:
-    functions = [ingest_parcel]
+    functions = [ingest_parcel, compute_water_budgets]
     cron_jobs = [
         CronJob(
             name="reap_stuck_jobs",
@@ -552,6 +555,62 @@ class WorkerSettings:
             keep_result_s=3600,
             keep_result_forever=False,
             max_tries=3,
+        ),
+        CronJob(
+            name="compute_water_budgets",
+            coroutine=compute_water_budgets,
+            hour=6,
+            minute=0,
+            second=0,
+            run_at_startup=False,
+            unique=True,
+            job_id="compute_water_budgets",
+            timeout_s=600,
+            keep_result_s=3600,
+            keep_result_forever=False,
+            max_tries=1,
+        ),
+        CronJob(
+            name="compute_water_budgets_12h",
+            coroutine=compute_water_budgets,
+            hour=12,
+            minute=0,
+            second=0,
+            run_at_startup=False,
+            unique=True,
+            job_id="compute_water_budgets_12h",
+            timeout_s=600,
+            keep_result_s=3600,
+            keep_result_forever=False,
+            max_tries=1,
+        ),
+        CronJob(
+            name="compute_water_budgets_18h",
+            coroutine=compute_water_budgets,
+            hour=18,
+            minute=0,
+            second=0,
+            run_at_startup=False,
+            unique=True,
+            job_id="compute_water_budgets_18h",
+            timeout_s=600,
+            keep_result_s=3600,
+            keep_result_forever=False,
+            max_tries=1,
+        ),
+        CronJob(
+            name="compute_water_budgets_0h",
+            coroutine=compute_water_budgets,
+            hour=0,
+            minute=0,
+            second=0,
+            run_at_startup=False,
+            unique=True,
+            job_id="compute_water_budgets_0h",
+            timeout_s=600,
+            keep_result_s=3600,
+            keep_result_forever=False,
+            max_tries=1,
         ),
     ]
     redis_settings = _parse_redis_url(REDIS_URL)

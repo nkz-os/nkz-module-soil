@@ -30,3 +30,6 @@ PROVIDER_ISOLATE_SECONDS = int(os.environ.get("PROVIDER_ISOLATE_SECONDS", "900")
 BATCH_MAX_ROWS = int(os.environ.get("SOIL_BATCH_MAX_ROWS", "500"))
 BATCH_MAX_BYTES = int(os.environ.get("SOIL_BATCH_MAX_BYTES", str(2 * 1024 * 1024)))
 BATCH_CONCURRENCY = int(os.environ.get("SOIL_BATCH_CONCURRENCY", "15"))
+
+# Default tenant for cron workers (water budget, etc.)
+SOIL_DEFAULT_TENANT = os.getenv("SOIL_DEFAULT_TENANT", "platform")
