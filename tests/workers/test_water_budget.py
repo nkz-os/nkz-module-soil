@@ -1,5 +1,4 @@
 """Tests for water_budget worker."""
-import pytest
 from nkz_soil.workers.water_budget import (
     _compute_projection,
     _generate_recommendation,

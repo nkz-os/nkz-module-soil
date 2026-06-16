@@ -55,7 +55,7 @@ async def parcel_water_budget(parcel_id: str, auth: AuthContext = require_auth()
                 "shouldIrrigate": True,
                 "amountMm": round((fc - moisture) * 100 * 0.6, 1) if fc and moisture else 0,
                 "suggestedDay": forecast_raw[0]["day"] if forecast_raw else None,
-                "reason": f"Deficit supera umbral de agotamiento (50% AWC)",
+                "reason": "Deficit supera umbral de agotamiento (50% AWC)",
             }
         elif depletion is not None:
             reco = {"shouldIrrigate": False}

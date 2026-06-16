@@ -155,7 +155,6 @@ def _default_forecast() -> list:
 
 
 def _compute_projection(current_moisture: float, fc: float, pwp: float, forecast: list) -> list:
-    awc = max(0.0, fc - pwp)
     moisture = current_moisture
     for day in forecast:
         et0 = day.get("et0", 4.0) / 100
