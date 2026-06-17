@@ -187,11 +187,58 @@ function DashboardTab() {
   const { t } = useTranslation('soil');
   const api = useSoilApi();
   const { data: soils, isLoading: soilsLoading } = useEntities<AgriSoilEntity>('AgriSoilExtended');
+  const { data: parcels, isLoading: parcelsLoading } = useEntities<NgsiLdEntity>('AgriParcel');
   const [selectedParcel, setSelectedParcel] = useState<string | null>(null);
   const [summary, setSummary] = useState<AgriSoilEntity | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Build map: AgriParcel short id → soil entity (if any)
+  const soilByParcel = React.useMemo(() => {
+    const map = new Map<string, AgriSoilEntity>();
+    if (!soils) return map;
+    for (const s of soils) {
+      const pid = getParcelId(s);
+      if (pid) map.set(pid, s);
+    }
+    return map;
+  }, [soils]);
+
+  // Combined parcel list: all AgriParcel + any AgriSoilExtended that references a non-Orion parcel
+  const allParcels = React.useMemo(() => {
+    const seen = new Set<string>();
+    const combined: Array<{ parcelId: string; parcelName: string | null; soilEntity: AgriSoilEntity | null }> = [];
+
+    // First, add parcels from AgriParcel
+    if (parcels) {
+      for (const p of parcels) {
+        const pid = (p.id as string)?.split(':')?.pop() || '';
+        if (pid) {
+          seen.add(pid);
+          combined.push({
+            parcelId: pid,
+            parcelName: (p as any).name || null,
+            soilEntity: soilByParcel.get(pid) || null,
+          });
+        }
+      }
+    }
+
+    // Then, add standalone AgriSoilExtended (e.g. from point texture ingest) that dont link to an AgriParcel
+    if (soils) {
+      for (const s of soils) {
+        const pid = getParcelId(s);
+        if (pid && !seen.has(pid)) {
+          seen.add(pid);
+          combined.push({ parcelId: pid, parcelName: null, soilEntity: s });
+        }
+      }
+    }
+
+    return combined;
+  }, [parcels, soils, soilByParcel]);
 
   useEffect(() => {
     const parcelQuery = searchParams.get('parcel');
@@ -202,33 +249,40 @@ function DashboardTab() {
 
   const handleSelectParcel = (id: string) => {
     setSelectedParcel(id);
+    setSummary(null);
+    setSummaryError(false);
     setSearchParams(prev => { prev.set('parcel', id); return prev; }, { replace: true });
   };
 
   // Fetch summary when parcel selected
   useEffect(() => {
-    if (selectedParcel) {
+    if (!selectedParcel) return;
+    const existing = soilByParcel.get(selectedParcel);
+    if (existing) {
+      // Already have the full entity from useEntities
+      setSummary(existing);
+      setSummaryError(false);
+      setSummaryLoading(false);
+    } else {
+      // No soil data yet — try fetching anyway (the backend might have it)
+      setSummaryLoading(true);
       api.getSummary(selectedParcel)
         .then((data: unknown) => { setSummary(data as AgriSoilEntity); setSummaryError(false); })
-        .catch(() => {
-          setSummary(null);
-          setSummaryError(true);
-        });
+        .catch(() => { setSummary(null); setSummaryError(true); })
+        .finally(() => setSummaryLoading(false));
     }
-  }, [selectedParcel, api]);
+  }, [selectedParcel, api, soilByParcel]);
 
-  const filteredSoils = React.useMemo(() => {
-    if (!soils) return [];
-    if (!searchTerm) return soils;
+  const filteredParcels = React.useMemo(() => {
+    if (!searchTerm) return allParcels;
     const lower = searchTerm.toLowerCase();
-    return soils.filter(s => {
-      const parcelId = getParcelId(s);
-      const dataSource = s.dataSource?.value || '';
-      return parcelId.toLowerCase().includes(lower) || String(dataSource).toLowerCase().includes(lower);
+    return allParcels.filter(p => {
+      return p.parcelId.toLowerCase().includes(lower) ||
+             (p.parcelName && p.parcelName.toLowerCase().includes(lower));
     });
-  }, [soils, searchTerm]);
+  }, [allParcels, searchTerm]);
 
-  if (soilsLoading) {
+  if (soilsLoading || parcelsLoading) {
     return (
       <div className="bg-nkz-surface rounded-nkz-md p-6">
         <p className="text-nkz-muted text-nkz-sm">{t('loading')}</p>
@@ -250,45 +304,55 @@ function DashboardTab() {
             className="px-3 py-1.5 text-nkz-sm rounded-nkz-sm border border-nkz-border bg-transparent min-w-[200px]"
           />
         </div>
-        {filteredSoils && filteredSoils.length > 0 ? (
+        {filteredParcels.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto pr-2">
-            {filteredSoils.map((soil) => {
-              const parcelId = getParcelId(soil);
-              const dataSource = soil.dataSource?.value;
-              const uncertainty = soil.uncertainty?.value;
-              const horizonList = soil.horizons?.value || [];
+            {filteredParcels.map((p) => {
+              const soil = p.soilEntity;
+              const dataSource = soil?.dataSource?.value;
+              const uncertainty = soil?.uncertainty?.value;
+              const horizonList = soil?.horizons?.value || [];
               const topH = horizonList[0] || {};
+              const hasSoil = !!soil;
 
               return (
                 <button
-                  key={soil.id}
-                  onClick={() => handleSelectParcel(soil.id)}
+                  key={p.parcelId}
+                  onClick={() => handleSelectParcel(p.parcelId)}
                   className={`text-left p-4 rounded-nkz-md border transition-colors ${
-                    selectedParcel === soil.id
+                    selectedParcel === p.parcelId
                       ? 'border-nkz-primary bg-nkz-primary/5'
                       : 'border-nkz-border hover:border-nkz-primary/50'
                   }`}
                 >
-                  <div className="text-nkz-sm font-medium truncate">{parcelId}</div>
-                  <div className="text-nkz-xs text-nkz-muted mt-1">
-                    {dataSource || '—'}
-                    {uncertainty != null && (
-                      <span className="ml-2">σ={uncertainty.toFixed(2)}</span>
-                    )}
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${hasSoil ? 'bg-nkz-success' : 'bg-nkz-muted'}`} />
+                    <div className="text-nkz-sm font-medium truncate">{p.parcelName || p.parcelId}</div>
                   </div>
-                  {(topH.hydrologicGroup || topH.ksatSaturated) && (
-                    <div className="flex gap-3 mt-2 text-nkz-xs">
-                      {topH.hydrologicGroup && (
-                        <span className="text-nkz-muted">
-                          {t('hydrologicGroup')}: <span className="font-medium">{String(topH.hydrologicGroup)}</span>
-                        </span>
+                  {hasSoil ? (
+                    <>
+                      <div className="text-nkz-xs text-nkz-muted mt-1 ml-4">
+                        {dataSource || '—'}
+                        {uncertainty != null && (
+                          <span className="ml-2">σ={uncertainty.toFixed(2)}</span>
+                        )}
+                      </div>
+                      {(topH.hydrologicGroup || topH.ksatSaturated) && (
+                        <div className="flex gap-3 mt-1 ml-4 text-nkz-xs">
+                          {topH.hydrologicGroup && (
+                            <span className="text-nkz-muted">
+                              {t('hydrologicGroup')}: <span className="font-medium">{String(topH.hydrologicGroup)}</span>
+                            </span>
+                          )}
+                          {topH.ksatSaturated != null && (
+                            <span className="text-nkz-muted">
+                              Ksat: <span className="font-medium">{String(topH.ksatSaturated)} mm/h</span>
+                            </span>
+                          )}
+                        </div>
                       )}
-                      {topH.ksatSaturated != null && (
-                        <span className="text-nkz-muted">
-                          Ksat: <span className="font-medium">{String(topH.ksatSaturated)} mm/h</span>
-                        </span>
-                      )}
-                    </div>
+                    </>
+                  ) : (
+                    <div className="text-nkz-xs text-nkz-muted mt-1 ml-4">{t('dashboard.noSoilData')}</div>
                   )}
                 </button>
               );
@@ -304,18 +368,21 @@ function DashboardTab() {
       </div>
 
       {/* Selected parcel detail */}
-      {summaryError && !summary && (
+      {summaryLoading && (
+        <div className="bg-nkz-surface rounded-nkz-md p-6 text-center py-8">
+          <p className="text-nkz-muted text-nkz-sm">{t('loading')}</p>
+        </div>
+      )}
+      {summaryError && !summary && !summaryLoading && selectedParcel && (
         <div className="bg-nkz-surface rounded-nkz-md p-6">
           <div className="text-center py-8">
-            <p className="text-nkz-danger text-nkz-sm">{t('error', 'Error loading soil data')}</p>
-            <button onClick={() => { setSummaryError(false); /* will refetch via useEffect */ }}
-                    className="mt-2 text-nkz-xs text-nkz-primary underline">
-              {t('retry', 'Retry')}
-            </button>
+            <p className="text-nkz-danger text-nkz-sm">{t('dashboard.noSoilData')}</p>
+            <p className="text-nkz-xs text-nkz-muted mt-1">{t('dashboard.noSoilHint')}</p>
+            <RefreshSoilButton parcelId={selectedParcel} />
           </div>
         </div>
       )}
-      {summary && selectedParcel && (
+      {summary && !summaryLoading && selectedParcel && (
         <div className="bg-nkz-surface rounded-nkz-md p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-nkz-lg font-medium">{t('dashboard.detail')}</h2>
