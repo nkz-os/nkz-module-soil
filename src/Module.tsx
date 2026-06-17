@@ -27,7 +27,7 @@ export default defineModule({
   requiredPlan: 'pro',
   i18n,
   data: {
-    entities: ['AgriSoilExtended', 'SoilSamplingPoint', 'SoilSurvey', 'SoilDerivedRaster', 'SoilWaterBudget'],
+    entities: ['AgriParcel', 'AgriSoilExtended', 'SoilSamplingPoint', 'SoilSurvey', 'SoilDerivedRaster', 'SoilWaterBudget'],
     timeseries: [],
   },
 });
