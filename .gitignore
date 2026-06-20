@@ -32,3 +32,10 @@ CURRENT_STATE.md
 *.tif.*
 *.tfw
 *.vrt
+
+# Security: sensitive files
+*.pem
+*.key
+apikey_*.txt
+*.apikey
+*-secret*
