@@ -473,18 +473,38 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
     if not db_url:
         db_url = os.environ.get("POSTGRES_URL", "")
 
-    try:
-        conn = await asyncpg.connect(db_url)
-        rows = await conn.fetch(
-            "SELECT tenant_id FROM tenant_installed_modules "
-            "WHERE module_id='soil' AND is_enabled=true"
-        )
-        await conn.close()
-    except Exception as e:
-        logger.error("Backfill soil: DB query failed (%s)", e)
-        return
+    # Discover tenants: try DB first, then env var, then guess from Orion
+    tenants = []
+    if db_url:
+        try:
+            conn = await asyncpg.connect(db_url)
+            rows = await conn.fetch(
+                "SELECT tenant_id FROM tenant_installed_modules "
+                "WHERE module_id='soil' AND is_enabled=true"
+            )
+            await conn.close()
+            tenants = [r["tenant_id"] for r in rows]
+        except Exception as e:
+            logger.warning("Backfill soil: DB query failed (%s), falling back to env", e)
 
-    tenants = [r["tenant_id"] for r in rows]
+    if not tenants:
+        env_tenants = os.environ.get("SOIL_ENABLED_TENANTS", "")
+        if env_tenants:
+            tenants = [t.strip() for t in env_tenants.split(",") if t.strip()]
+            logger.info("Backfill soil: using SOIL_ENABLED_TENANTS=%s", tenants)
+
+    if not tenants:
+        # Last resort: scan known tenants from Orion
+        from nkz_soil.storage.orion import OrionClient
+        for guess in ("montiko", "asociacion-allotarra", "platform"):
+            try:
+                async with OrionClient(guess) as orion:
+                    parcels = await orion.query_entities(type="AgriParcel")
+                    if parcels:
+                        tenants.append(guess)
+            except Exception:
+                pass
+        logger.info("Backfill soil: discovered tenants from Orion: %s", tenants)
     logger.info("Backfill soil: %d tenants with soil module enabled", len(tenants))
 
     redis: ArqRedis = ctx.get("redis")  # type: ignore[assignment]

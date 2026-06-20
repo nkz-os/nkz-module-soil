@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: ghcr.io/nkz-os/nkz-module-soil/soil-worker@sha256:918efc808fa444a2f602921097d7462fdb464c976c7502d89ac3522f4197df69  # fix: use SOIL_PG_DSN env var
+          image: ghcr.io/nkz-os/nkz-module-soil/soil-worker@sha256:05b245647af5b0557050783ff065e9a168e3aa91c7335a31c2252b3673580838  # fix: tenant discovery fallback chain
           command: ["arq", "nkz_soil.workers.ingest.WorkerSettings"]
           imagePullPolicy: IfNotPresent
           envFrom:
