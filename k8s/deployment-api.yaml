@@ -17,7 +17,7 @@ spec:
         - name: api
           # Pin by digest after each GHCR push (amd64 manifest). Update via:
           # docker manifest inspect ghcr.io/nkz-os/nkz-module-soil/soil-api:latest
-          image: ghcr.io/nkz-os/nkz-module-soil/soil-api@sha256:b364c4adf3345743dfb6d644935f77fb5941d9cb1aa02a2d2d43b65b6fbfd618  # fix: +ArqRedis import on backfill
+          image: ghcr.io/nkz-os/nkz-module-soil/soil-api@sha256:918efc808fa444a2f602921097d7462fdb464c976c7502d89ac3522f4197df69  # fix: use SOIL_PG_DSN env var
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000

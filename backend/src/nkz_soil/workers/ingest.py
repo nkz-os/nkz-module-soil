@@ -469,14 +469,9 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
     logger = logging.getLogger(__name__)
     logger.info("Backfill soil: scanning for parcels without soil data")
 
-    db_url = os.environ.get("POSTGRES_URL", "")
+    db_url = os.environ.get("SOIL_PG_DSN", "")
     if not db_url:
-        host = os.environ.get("POSTGRES_HOST", "postgresql-service")
-        port = os.environ.get("POSTGRES_PORT", "5432")
-        dbname = os.environ.get("POSTGRES_DB", "nekazari")
-        user = os.environ.get("POSTGRES_USER", "postgres")
-        password = os.environ.get("POSTGRES_PASSWORD", "")
-        db_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+        db_url = os.environ.get("POSTGRES_URL", "")
 
     try:
         conn = await asyncpg.connect(db_url)
