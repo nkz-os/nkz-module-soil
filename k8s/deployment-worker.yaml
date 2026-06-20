@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: ghcr.io/nkz-os/nkz-module-soil/soil-worker@sha256:92be4c3b7d2bb82f4f62bdb4dea325436bea73ecb9fcd230726416d101bf71d4  # fix: +import os on backfill
+          image: ghcr.io/nkz-os/nkz-module-soil/soil-worker@sha256:b364c4adf3345743dfb6d644935f77fb5941d9cb1aa02a2d2d43b65b6fbfd618  # fix: +ArqRedis import on backfill
           command: ["arq", "nkz_soil.workers.ingest.WorkerSettings"]
           imagePullPolicy: IfNotPresent
           envFrom:

@@ -464,6 +464,7 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
     import asyncpg
     import logging
     from uuid import uuid4
+    from arq.connections import ArqRedis
 
     logger = logging.getLogger(__name__)
     logger.info("Backfill soil: scanning for parcels without soil data")
