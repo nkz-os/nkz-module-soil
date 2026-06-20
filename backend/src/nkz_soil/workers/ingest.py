@@ -458,6 +458,87 @@ def _aggregate_uncertainty(results: list) -> float:
     return round(sum(r.uncertainty for r in results) / len(results), 2)
 
 
+async def backfill_parcels_without_soil(ctx: dict) -> None:
+    """Cada 6h: detecta parcelas sin AgriSoilExtended y las ingiere."""
+    import asyncpg
+    import logging
+    from uuid import uuid4
+
+    logger = logging.getLogger(__name__)
+    logger.info("Backfill soil: scanning for parcels without soil data")
+
+    db_url = os.environ.get("POSTGRES_URL", "")
+    if not db_url:
+        host = os.environ.get("POSTGRES_HOST", "postgresql-service")
+        port = os.environ.get("POSTGRES_PORT", "5432")
+        dbname = os.environ.get("POSTGRES_DB", "nekazari")
+        user = os.environ.get("POSTGRES_USER", "postgres")
+        password = os.environ.get("POSTGRES_PASSWORD", "")
+        db_url = f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
+
+    try:
+        conn = await asyncpg.connect(db_url)
+        rows = await conn.fetch(
+            "SELECT tenant_id FROM tenant_installed_modules "
+            "WHERE module_id='soil' AND is_enabled=true"
+        )
+        await conn.close()
+    except Exception as e:
+        logger.error("Backfill soil: DB query failed (%s)", e)
+        return
+
+    tenants = [r["tenant_id"] for r in rows]
+    logger.info("Backfill soil: %d tenants with soil module enabled", len(tenants))
+
+    redis: ArqRedis = ctx.get("redis")  # type: ignore[assignment]
+    if redis is None:
+        redis = ArqRedis.from_url(REDIS_URL)
+
+    total_enqueued = 0
+    for tenant_id in tenants:
+        try:
+            async with OrionClient(tenant_id) as orion:
+                parcels = await orion.query_entities(type="AgriParcel")
+                soils = await orion.query_entities(type="AgriSoilExtended")
+
+            soiled = set()
+            for s in soils:
+                ref = s.get("hasAgriParcel") or {}
+                obj = ref.get("object") if isinstance(ref, dict) else ref
+                if obj:
+                    soiled.add(obj)
+
+            enqueued = 0
+            for p in parcels:
+                pid = p.get("id", "")
+                if pid and pid not in soiled:
+                    parcel_short = pid.split(":")[-1]
+                    geometry = p.get("location", {}).get("value", {})
+                    await redis.enqueue_job(
+                        "ingest_parcel",
+                        parcel_short,
+                        tenant_id,
+                        geometry,
+                        "v1",
+                    )
+                    enqueued += 1
+
+            if enqueued:
+                logger.info(
+                    "Backfill soil: enqueued %d parcels for %s",
+                    enqueued, tenant_id,
+                )
+            total_enqueued += enqueued
+
+        except Exception as e:
+            logger.error("Backfill soil: error processing %s (%s)", tenant_id, e)
+
+    logger.info("Backfill soil: done — %d total parcels enqueued", total_enqueued)
+
+    if ctx.get("redis") is None:
+        await redis.close()
+
+
 async def reap_stuck_jobs(ctx: dict) -> None:
     """Detect and clean up stuck ARQ jobs.
 
@@ -540,8 +621,26 @@ def _parse_redis_url(url: str) -> RedisSettings:
 
 
 class WorkerSettings:
-    functions = [ingest_parcel, compute_water_budgets]
+    functions = [ingest_parcel, compute_water_budgets, backfill_parcels_without_soil]
     cron_jobs = [
+        CronJob(
+            name="backfill_soil",
+            coroutine=backfill_parcels_without_soil,
+            month=None,
+            day=None,
+            weekday=None,
+            hour={0, 6, 12, 18},
+            minute=0,
+            second=0,
+            microsecond=0,
+            run_at_startup=True,
+            unique=True,
+            job_id="backfill_soil",
+            timeout_s=600,
+            keep_result_s=3600,
+            keep_result_forever=False,
+            max_tries=1,
+        ),
         CronJob(
             name="reap_stuck_jobs",
             coroutine=reap_stuck_jobs,
