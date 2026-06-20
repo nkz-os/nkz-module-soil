@@ -16,6 +16,7 @@ spec:
       containers:
         - name: worker
           image: ghcr.io/nkz-os/nkz-module-soil/soil-worker@sha256:219eff3b253e7c439254aafae2d032d02edf8116aaca7e1811fcba607753af5d  # fix: backfill cron + setup_parcel_url
+          command: ["arq", "nkz_soil.workers.ingest.WorkerSettings"]
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
