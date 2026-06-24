@@ -518,8 +518,9 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
             logger.info("Backfill soil: using SOIL_ENABLED_TENANTS=%s", tenants)
 
     if not tenants:
-        # Last resort: scan known tenants from Orion
-        from nkz_soil.storage.orion import OrionClient
+        # Last resort: scan known tenants from Orion. OrionClient is already
+        # imported at module level — a local import here would shadow it for the
+        # whole function and break the main loop when tenants come from the DB.
         for guess in ("montiko", "asociacion-allotarra", "platform"):
             try:
                 async with OrionClient(guess) as orion:
