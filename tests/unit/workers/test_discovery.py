@@ -2,8 +2,6 @@
 lives), not the soil module's own DB. Mirrors weather-map's discover pattern."""
 from __future__ import annotations
 
-import pytest
-
 
 def test_platform_postgres_url_prefers_full_url(monkeypatch):
     monkeypatch.setenv("POSTGRES_URL", "postgresql://u:p@h:5432/db")

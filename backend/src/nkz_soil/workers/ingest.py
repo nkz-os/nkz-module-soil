@@ -489,7 +489,6 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
     """Cada 6h: detecta parcelas sin AgriSoilExtended y las ingiere."""
     import asyncpg
     import logging
-    from uuid import uuid4
     from arq.connections import ArqRedis
 
     logger = logging.getLogger(__name__)
