@@ -70,6 +70,28 @@ PROVIDER_PRIORITIES = {
 }
 
 
+def _platform_postgres_url() -> str:
+    """Build the platform Postgres DSN (where tenant_installed_modules lives).
+
+    Tenant discovery must hit the platform DB, NOT the soil module's own DB
+    (SOIL_PG_DSN) — that DB has no tenant_installed_modules table, which is why
+    discovery always failed and fell back to a hardcoded tenant scan. Mirrors
+    weather-map's discover pattern: full POSTGRES_URL wins, else POSTGRES_* parts.
+    Returns "" when no credentials are available (caller falls back).
+    """
+    url = os.environ.get("POSTGRES_URL", "").strip()
+    if url:
+        return url
+    password = os.environ.get("POSTGRES_PASSWORD", "")
+    if not password:
+        return ""
+    host = os.environ.get("POSTGRES_HOST", "postgresql-service")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    db = os.environ.get("POSTGRES_DB", "nekazari")
+    user = os.environ.get("POSTGRES_USER", "postgres")
+    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+
+
 @dataclass
 class EnrichedHorizon:
     depth_from: int
@@ -252,7 +274,11 @@ async def ingest_parcel(
     all_provider_results = provider_results + legacy_as_provider_results
 
     entity = build_agri_soil_extended(
-        parcel_id=f"{tenant_id}:{parcel_id}",
+        # Use the real parcel id only — NOT prefixed with tenant. Each tenant has
+        # its own Orion store, so namespacing is redundant, and prefixing made
+        # hasAgriParcel point to a non-existent urn:...:AgriParcel:<tenant>:<id>,
+        # breaking consumer joins and backfill idempotency.
+        parcel_id=parcel_id,
         location=geometry,
         merged_horizons=[_horizon_to_dict(h) for h in merged_horizons],
         results=all_provider_results,
@@ -469,9 +495,8 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
     logger = logging.getLogger(__name__)
     logger.info("Backfill soil: scanning for parcels without soil data")
 
-    db_url = os.environ.get("SOIL_PG_DSN", "")
-    if not db_url:
-        db_url = os.environ.get("POSTGRES_URL", "")
+    # tenant_installed_modules lives in the PLATFORM DB, not the soil module DB.
+    db_url = _platform_postgres_url()
 
     # Discover tenants: try DB first, then env var, then guess from Orion
     tenants = []

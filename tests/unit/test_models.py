@@ -1,4 +1,4 @@
-from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty, CONTEXT_URLS
+from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 
 
 def test_agri_soil_valid():
@@ -20,12 +20,19 @@ def test_agri_soil_valid():
     assert out["parcelVersionId"]["value"] == "v1"
 
 
-def test_agri_soil_context():
+def test_to_ngsi_omits_context_for_sdk_injection():
+    """Producer must NOT pin an @context in the entity body.
+
+    Embedding an unreachable external context (nkz-os.org) made Orion-LD
+    return 503 trying to download it, so AgriSoilExtended never persisted.
+    The SDK injects the reachable internal platform context when @context
+    is absent — so to_ngsi() must omit it entirely.
+    """
     entity = AgriSoilExtended(
         id="urn:ngsi-ld:AgriSoilExtended:test-1",
         location=GeoProperty(value={"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}),
         hasAgriParcel=Relationship(object="urn:ngsi-ld:AgriParcel:parcel-1"),
         horizons=TaggedProperty(value=[]),
     )
-    assert len(entity.context) == 2
-    assert entity.context == CONTEXT_URLS
+    out = entity.to_ngsi()
+    assert "@context" not in out

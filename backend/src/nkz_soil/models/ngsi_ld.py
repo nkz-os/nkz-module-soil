@@ -9,12 +9,6 @@ from typing import Any
 from pydantic import BaseModel
 
 
-CONTEXT_URLS = [
-    "https://nkz-os.org/jsonld-contexts/v1/nkz-context.jsonld",
-    "https://smartdatamodels.org/context.jsonld",
-]
-
-
 class GeoProperty(BaseModel):
     type: str = "GeoProperty"
     value: dict[str, Any]
@@ -70,18 +64,17 @@ class AgriSoilExtended:
     relativeCompaction: TaggedProperty | None = None
     type: str = "AgriSoilExtended"
 
-    @property
-    def context(self) -> list[str]:
-        return CONTEXT_URLS
-
     def to_ngsi(self) -> dict:
+        # No @context in the body on purpose: the OrionClient SDK injects the
+        # reachable internal platform context (api-gateway) when @context is
+        # absent. Pinning an external context here made Orion-LD 503 on
+        # download (curl error 7) and the entity never persisted.
         out: dict = {
             "id": self.id,
             "type": self.type,
             "location": self.location.model_dump(),
             "hasAgriParcel": self.hasAgriParcel.model_dump(),
             "horizons": self.horizons.to_ngsi(),
-            "@context": self.context,
         }
         for attr in ("hydrologicGroup", "parcelVersionId", "relativeCompaction"):
             v: TaggedProperty | None = getattr(self, attr)

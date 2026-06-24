@@ -155,4 +155,52 @@ async def test_ingest_parcel_creates_entity():
         mock_orion.create_entity.assert_called_once()
         entity = mock_orion.create_entity.call_args[0][0]
         assert entity["type"] == "AgriSoilExtended"
-        assert "@context" in entity
+        # No @context in the body — the SDK injects the reachable platform context.
+        assert "@context" not in entity
+
+
+@pytest.mark.asyncio
+async def test_ingest_parcel_links_real_parcel_urn():
+    """hasAgriParcel must point to the real parcel URN (no tenant prefix).
+
+    The old code prefixed parcel_id with the tenant, yielding
+    urn:ngsi-ld:AgriParcel:<tenant>:<uuid> — a non-existent entity that broke
+    consumer joins (bioorch/crop-health) and the backfill idempotency check.
+    """
+    from nkz_soil.workers.ingest import ingest_parcel
+
+    mock_orion = AsyncMock()
+    mock_orion.__aenter__ = AsyncMock(return_value=mock_orion)
+    mock_orion.__aexit__ = AsyncMock(return_value=None)
+    mock_orion.create_entity = AsyncMock()
+    mock_orion.query_entities = AsyncMock(return_value=[])
+
+    mock_cb = AsyncMock()
+    mock_cb.is_open = AsyncMock(return_value=False)
+    mock_cb.record_success = AsyncMock()
+    mock_cb.record_failure = AsyncMock()
+
+    mock_cache = AsyncMock()
+    mock_cache.get = AsyncMock(return_value=None)
+    mock_cache.set = AsyncMock()
+    mock_cache.close = AsyncMock()
+
+    with patch("nkz_soil.workers.ingest.OrionClient", return_value=mock_orion):
+        ctx = {"registry": MagicMock(), "circuit_breaker": mock_cb, "cache": mock_cache}
+        ctx["registry"].get_all.return_value = []
+
+        await ingest_parcel(
+            ctx,
+            parcel_id="da36ccd2-85d2-4c76-b552-c5c835a987c1",
+            tenant_id="montiko",
+            geometry={"type": "Point", "coordinates": [-1.6, 42.8]},
+            parcel_version_id="v1",
+        )
+
+        entity = mock_orion.create_entity.call_args[0][0]
+        assert entity["hasAgriParcel"]["object"] == (
+            "urn:ngsi-ld:AgriParcel:da36ccd2-85d2-4c76-b552-c5c835a987c1"
+        )
+        assert entity["id"] == (
+            "urn:ngsi-ld:AgriSoilExtended:da36ccd2-85d2-4c76-b552-c5c835a987c1"
+        )

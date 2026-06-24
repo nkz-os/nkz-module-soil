@@ -50,6 +50,21 @@ spec:
               value: "http://api-gateway-service:5000/ngsi-ld-context.json"
             - name: SOIL_DEFAULT_TENANT
               value: "platform"
+            # Platform DB for dynamic tenant discovery (tenant_installed_modules).
+            # NOT the soil module DB (SOIL_PG_DSN). Mirrors weather-map/weather-worker.
+            - name: POSTGRES_HOST
+              value: "postgresql-service"
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: "nekazari"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-secret
+                  key: password
           resources:
             requests:
               cpu: 100m

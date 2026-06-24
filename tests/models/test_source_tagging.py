@@ -22,13 +22,13 @@ def test_tagged_property_serializes_with_provenance():
     assert out["confidenceInterval"]["value"] == [22.0, 28.0]
 
 
-def test_agri_soil_extended_has_smartagrifood_context():
+def test_agri_soil_extended_body_has_no_pinned_context():
+    """The entity body must not pin an @context (the SDK injects the reachable
+    internal platform context). Pinning an external context caused Orion 503s."""
     e = AgriSoilExtended(
         id="urn:ngsi-ld:AgriSoilExtended:p-1",
         location=GeoProperty(value={"type": "Point", "coordinates": [0, 0]}),
         hasAgriParcel=Relationship(object="urn:ngsi-ld:AgriParcel:p-1"),
         horizons=TaggedProperty(value=[], provided_by="LUCAS-2018", license_id="JRC-LUCAS-2018"),
     )
-    ctx = e.context
-    assert any("smartdatamodels.org" in c.lower() or "nkz-os.org" in c for c in ctx)
-    assert "ngsi-ld-core-context" not in " ".join(ctx)
+    assert "@context" not in e.to_ngsi()
