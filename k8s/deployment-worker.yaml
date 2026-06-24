@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: ghcr.io/nkz-os/nkz-module-soil/soil-worker@sha256:71166926c7953c93e8173cbe88ad922e7b82909a1d2be7270886e7006d84f575  # fix: persist AgriSoilExtended (@context, parcel URN, platform-DB discovery)
+          image: ghcr.io/nkz-os/nkz-module-soil/soil-worker@sha256:05b4ebebe2f0588f2f31259e24308476e57e8a484ff761d794427508cf43bb7b  # fix: persist AgriSoilExtended (@context, parcel URN, platform-DB discovery)
           command: ["arq", "nkz_soil.workers.ingest.WorkerSettings"]
           imagePullPolicy: IfNotPresent
           envFrom:
