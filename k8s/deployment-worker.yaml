@@ -48,6 +48,13 @@ spec:
               value: "http://minio-service:9000"
             - name: CONTEXT_URL
               value: "http://api-gateway-service:5000/ngsi-ld-context.json"
+            - name: REQUIRE_HMAC_SIGNATURE
+              value: "true"
+            - name: HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: secret
             - name: SOIL_DEFAULT_TENANT
               value: "platform"
             # Platform DB for dynamic tenant discovery (tenant_installed_modules).
