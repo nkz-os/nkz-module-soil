@@ -16,6 +16,14 @@ from nkz_soil.storage.orion import OrionClient
 
 logger = logging.getLogger(__name__)
 
+_PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
+
+
+def _parcel_urn(parcel_id: str) -> str:
+    if parcel_id.startswith(_PARCEL_URN_PREFIX):
+        return parcel_id
+    return f"{_PARCEL_URN_PREFIX}{parcel_id}"
+
 router = APIRouter()
 
 
@@ -52,7 +60,7 @@ async def setup_parcel(request: Request):
     # If no geometry provided, resolve from Orion
     if not geometry:
         async with OrionClient(tenant_id) as orion:
-            q = f'id=="urn:ngsi-ld:AgriParcel:{parcel_id}"'
+            q = f'id=="{_parcel_urn(parcel_id)}"'
             parcels = await orion.query_entities(type="AgriParcel", q=q, limit=1)
             if parcels:
                 geometry = parcels[0].get("location", {}).get("value", {})
