@@ -10,6 +10,11 @@ from arq.cron import CronJob
 from nkz_soil.config import REDIS_URL
 from nkz_soil.workers.water_budget import compute_water_budgets
 from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
+
+_PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
+
+def _short_id(parcel_id: str) -> str:
+    return parcel_id.split(":")[-1] if parcel_id.startswith(_PARCEL_URN_PREFIX) else parcel_id
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
 from nkz_soil.pedotransfer.relative_compaction import relative_compaction
@@ -145,9 +150,9 @@ def build_agri_soil_extended(
     winners = _winner_source_per_attr({"horizons": True}, results)
     hw = winners.get("horizons", {})
     return AgriSoilExtended(
-        id=f"urn:ngsi-ld:AgriSoilExtended:{parcel_id}",
+        id=f"urn:ngsi-ld:AgriSoilExtended:{_short_id(parcel_id)}",
         location=GeoProperty(value=location),
-        hasAgriParcel=Relationship(object=f"urn:ngsi-ld:AgriParcel:{parcel_id}"),
+        hasAgriParcel=Relationship(object=f"urn:ngsi-ld:AgriParcel:{_short_id(parcel_id)}"),
         horizons=TaggedProperty(
             value=merged_horizons,
             provided_by=hw.get("source_tag"),

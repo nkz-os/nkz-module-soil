@@ -13,6 +13,16 @@ from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 router = APIRouter()
 
 
+_PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
+
+
+def _parcel_urn(parcel_id: str) -> str:
+    """Return canonical parcel URN, normalizing short id or full URN."""
+    if parcel_id.startswith(_PARCEL_URN_PREFIX):
+        return parcel_id
+    return f"{_PARCEL_URN_PREFIX}{parcel_id}"
+
+
 class SamplingPointInput(BaseModel):
     lat: float
     lon: float
@@ -123,7 +133,7 @@ async def create_survey(body: SurveyInput, auth: AuthContext = require_auth()):
     if body.parcel_id:
         entity["hasAgriParcel"] = {
             "type": "Relationship",
-            "object": f"urn:ngsi-ld:AgriParcel:{body.parcel_id}",
+            "object": _parcel_urn(body.parcel_id),
         }
 
     async with OrionClient(tenant_id) as orion:
