@@ -17,7 +17,7 @@ spec:
         - name: api
           # Pin by digest after each GHCR push (amd64 manifest). Update via:
           # docker manifest inspect ghcr.io/nkz-os/nkz-module-soil/soil-api:latest
-          image: ghcr.io/nkz-os/nkz-module-soil/soil-api@sha256:b1421bd14e5139a795b3e23fcd36f5a3f477c17c8c32b2b07a0b12e0738643bb  # fix: persist AgriSoilExtended (@context, parcel URN, platform-DB discovery)
+          image: ghcr.io/nkz-os/nkz-module-soil/soil-api@sha256:3c7cade946aebdfc80d4e963a4c060cc4e06505e55b5c6c94d6627f388e7243b  # master 7e1cf55: Fix ruff E402, reap_stuck_jobs WRONGTYPE, water budget type query
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
