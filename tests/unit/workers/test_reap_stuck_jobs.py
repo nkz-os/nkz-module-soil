@@ -11,6 +11,7 @@ async def test_reap_stuck_jobs_marks_old_running():
     from nkz_soil.workers.ingest import reap_stuck_jobs
 
     mock_redis = AsyncMock()
+    mock_redis.type = AsyncMock(return_value=b"hash")
     mock_redis.scan = AsyncMock(side_effect=[
         (0, ["arq:job:job1", "arq:job:job2"]),
     ])
@@ -34,11 +35,37 @@ async def test_reap_stuck_jobs_marks_old_running():
 
 
 @pytest.mark.asyncio
+async def test_reap_stuck_jobs_skips_non_hash_keys():
+    """Non-hash Redis keys (e.g. sorted sets) should be skipped."""
+    from nkz_soil.workers.ingest import reap_stuck_jobs
+
+    mock_redis = AsyncMock()
+    mock_redis.type = AsyncMock(side_effect=[b"zset", b"hash"])
+    mock_redis.scan = AsyncMock(side_effect=[
+        (0, ["arq:job:queue", "arq:job:job1"]),
+    ])
+    mock_redis.hgetall = AsyncMock(
+        return_value={"status": "running", "enqueue_time": str(time.monotonic() - 3600)}
+    )
+    mock_redis.hset = AsyncMock()
+    mock_redis.close = AsyncMock()
+
+    ctx = {"redis": mock_redis}
+
+    await reap_stuck_jobs(ctx)
+
+    # hgetall should only be called once (for the hash key)
+    assert mock_redis.hgetall.call_count == 1
+    mock_redis.hgetall.assert_called_once_with("arq:job:job1")
+
+
+@pytest.mark.asyncio
 async def test_reap_stuck_jobs_no_stuck_jobs():
     """No jobs to reap if all are recent."""
     from nkz_soil.workers.ingest import reap_stuck_jobs
 
     mock_redis = AsyncMock()
+    mock_redis.type = AsyncMock(return_value=b"hash")
     mock_redis.scan = AsyncMock(return_value=(0, ["arq:job:job1"]))
     mock_redis.hgetall = AsyncMock(
         return_value={"status": "running", "enqueue_time": str(time.monotonic() - 60)}

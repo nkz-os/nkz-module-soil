@@ -10,11 +10,6 @@ from arq.cron import CronJob
 from nkz_soil.config import REDIS_URL
 from nkz_soil.workers.water_budget import compute_water_budgets
 from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
-
-_PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
-
-def _short_id(parcel_id: str) -> str:
-    return parcel_id.split(":")[-1] if parcel_id.startswith(_PARCEL_URN_PREFIX) else parcel_id
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
 from nkz_soil.pedotransfer.relative_compaction import relative_compaction
@@ -36,6 +31,11 @@ from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.metrics import metrics
 from nkz_soil.providers.soilgrids import SoilGridsProvider
 from nkz_soil.storage.orion import OrionClient
+
+_PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
+
+def _short_id(parcel_id: str) -> str:
+    return parcel_id.split(":")[-1] if parcel_id.startswith(_PARCEL_URN_PREFIX) else parcel_id
 
 STANDARD_DEPTHS = [
     DepthInterval(0, 5),
@@ -615,6 +615,11 @@ async def reap_stuck_jobs(ctx: dict) -> None:
                 cursor=cursor, match="arq:job:*", count=100
             )
             for key in keys:
+                # ARQ stores queue data as non-hash Redis types (e.g. sorted sets);
+                # hgetall on a non-hash key raises WRONGTYPE. Skip non-hash keys.
+                key_type = await redis.type(key)
+                if key_type != b"hash" and key_type != "hash":
+                    continue
                 job_data = await redis.hgetall(key)
                 if not job_data:
                     continue

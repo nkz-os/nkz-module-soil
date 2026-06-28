@@ -40,7 +40,7 @@ async def compute_water_budgets(ctx: dict) -> dict:
     try:
         stats = {"processed": 0, "errors": 0, "skipped": 0}
 
-        entities = await orion.query_entities(type="AgriSoil")
+        entities = await orion.query_entities(type="AgriSoilExtended")
         logger.info(
             "Tenant '%s': found %d AgriSoil entities",
             tenant_id, len(entities),
