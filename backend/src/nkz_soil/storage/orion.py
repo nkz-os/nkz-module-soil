@@ -194,3 +194,69 @@ class OrionClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+
+# ── EOProduct helpers ───────────────────────────────────────────────────────
+
+
+def _extract_eoproduct_scalar(entity: dict[str, Any], attr: str) -> float | None:
+    """Read a numeric scalar from an EOProduct attribute.
+
+    Handles both full NGSI-LD form ``{"type": "Property", "value": 0.72}``
+    and flat keyValues form ``0.72``.
+    """
+    raw = entity.get(attr)
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        raw = raw.get("value")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+async def fetch_parcel_smi(
+    parcel_id: str, tenant_id: str
+) -> tuple[float, str] | None:
+    """Fetch the latest SAR-derived Soil Moisture Index (0–1) for a parcel.
+
+    Queries ``EOProduct`` entities in Orion-LD filtered by ``hasAgriParcel``
+    (falls back to legacy ``refAgriParcel`` during migration).  Returns a
+    ``(smi, sensing_date)`` tuple where ``sensing_date`` is an ISO-8601 date
+    string, or ``None`` when no SAR moisture data is available for the parcel.
+
+    ``smi`` maps to volumetric moisture via:
+        ``moisture = pwp + smi * (fc - pwp)``
+    """
+    urn = parcel_id if parcel_id.startswith("urn:") else f"urn:ngsi-ld:AgriParcel:{parcel_id}"
+    q = f'hasAgriParcel=="{urn}"|refAgriParcel=="{urn}"'
+
+    try:
+        async with OrionClient(tenant_id) as client:
+            entities = await client.query_entities(
+                type="EOProduct",
+                q=q,
+                limit=100,
+            )
+        if not entities:
+            return None
+
+        with_smi = [e for e in entities if e.get("sarMoisture") is not None]
+        if not with_smi:
+            return None
+
+        latest = max(with_smi, key=lambda e: str(e.get("sensingDate", "")))
+        smi = _extract_eoproduct_scalar(latest, "sarMoisture")
+        if smi is None:
+            return None
+
+        raw_date = latest.get("sensingDate", "")
+        sensing_date = str(raw_date.get("value", "") if isinstance(raw_date, dict) else raw_date)
+        return smi, sensing_date
+
+    except Exception:
+        logger.warning("fetch_parcel_smi: failed for parcel %s", parcel_id, exc_info=True)
+        return None

@@ -17,7 +17,7 @@ import httpx
 
 from nkz_soil.config import SOIL_DEFAULT_TENANT
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
-from nkz_soil.storage.orion import OrionClient
+from nkz_soil.storage.orion import OrionClient, fetch_parcel_smi
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +66,25 @@ async def compute_water_budgets(ctx: dict) -> dict:
                 pwp = ptf["wilting_point"]
                 awc = round(max(0.0, fc - pwp), 3)
 
+                parcel_ref = entity.get("hasAgriParcel", {}).get("object", "")
+
+                # Moisture precedence: IoT sensor > satellite SAR > PTF default
                 current_moisture = await _get_current_moisture(orion, entity["id"])
+                smi_sensing_date: str | None = None
                 if current_moisture is None:
-                    current_moisture = fc * 0.8
+                    smi_result = await fetch_parcel_smi(parcel_ref or entity["id"], tenant_id)
+                    if smi_result is not None:
+                        smi_val, smi_sensing_date = smi_result
+                        # Map SMI [0-1] to volumetric moisture between pwp and fc
+                        current_moisture = pwp + smi_val * (fc - pwp)
+                        logger.debug(
+                            "Parcel %s: calibrated moisture from SAR SMI=%.3f → %.3f m³/m³",
+                            parcel_ref, smi_val, current_moisture,
+                        )
+                    else:
+                        current_moisture = fc * 0.8
 
                 deficit_mm = max(0.0, (fc - current_moisture) * 100)
-
-                parcel_ref = entity.get("hasAgriParcel", {}).get("object", "")
                 forecast = await _get_et0_forecast(parcel_ref)
                 if not forecast:
                     forecast = _default_forecast()
@@ -105,6 +117,11 @@ async def compute_water_budgets(ctx: dict) -> dict:
                         },
                     },
                 }
+                if smi_sensing_date:
+                    attrs["sarMoistureSensingDate"] = {
+                        "type": "Property",
+                        "value": smi_sensing_date,
+                    }
                 if reco is not None:
                     attrs["irrigationRecommendation"] = {
                         "type": "Property",
