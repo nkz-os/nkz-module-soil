@@ -25,11 +25,24 @@ async def _first_agri_soil(orion: OrionClient, parcel_id: str) -> dict:
     return entities[0]
 
 
+def _prop_value(entity: dict, key: str, default=None):
+    raw = entity.get(key)
+    if isinstance(raw, dict) and "value" in raw:
+        return raw["value"]
+    return default if raw is None else raw
+
+
 @router.get("/parcel/{parcel_id}/summary")
 @limiter.exempt
 async def parcel_summary(parcel_id: str, auth: AuthContext = require_auth()):
     async with OrionClient(auth.tenant_id) as orion:
-        return await _first_agri_soil(orion, parcel_id)
+        entity = await _first_agri_soil(orion, parcel_id)
+        return {
+            "horizons": entity.get("horizons", {}).get("value", []),
+            "dataSource": _prop_value(entity, "dataSource", ""),
+            "uncertainty": _prop_value(entity, "uncertainty", 0),
+            "relativeCompaction": _prop_value(entity, "relativeCompaction"),
+        }
 
 
 @router.get("/parcel/{parcel_id}/horizons")

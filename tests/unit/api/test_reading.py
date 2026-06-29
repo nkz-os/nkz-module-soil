@@ -48,7 +48,9 @@ def test_parcel_summary_found(client, mock_orion):
     ]
     resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert resp.status_code == 200
-    assert resp.json()["dataSource"]["value"] == "soilgrids"
+    body = resp.json()
+    assert body["dataSource"] == "soilgrids"
+    assert len(body["horizons"]) == 1
 
 
 def test_parcel_horizons(client, mock_orion):

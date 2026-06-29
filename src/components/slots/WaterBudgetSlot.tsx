@@ -4,9 +4,10 @@
  * Shows the water budget gauge when a parcel is selected in the viewer.
  */
 import React, { useState, useEffect } from 'react';
-import { useI18n } from '@nekazari/module-kit';
+import { useTranslation } from 'react-i18next';
 import { useViewer } from '@nekazari/sdk';
 import { Droplets, Loader2, AlertCircle } from 'lucide-react';
+import { useSoilApi } from '../../hooks/useSoilApi';
 import { WaterBudgetGauge, WaterBudgetData } from '../WaterBudgetGauge';
 
 interface WaterBudgetSlotProps {
@@ -14,7 +15,8 @@ interface WaterBudgetSlotProps {
 }
 
 export const WaterBudgetSlot: React.FC<WaterBudgetSlotProps> = ({ className }) => {
-  const { t } = useI18n();
+  const { t } = useTranslation('soil');
+  const api = useSoilApi();
   const { selectedEntityId, selectedEntityType } = useViewer();
   const [data, setData] = useState<WaterBudgetData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,24 +32,21 @@ export const WaterBudgetSlot: React.FC<WaterBudgetSlotProps> = ({ className }) =
     setLoading(true);
     setError(null);
 
-    const parcelId = selectedEntityId.replace('urn:ngsi-ld:AgriParcel:', '');
-
-    import('../../services/soilLayerContext').then(({ fetchSoilLayerContext }) => {
-      fetchSoilLayerContext(`/v1/soil/parcel/${parcelId}/water-budget`)
-        .then((result: any) => {
-          if (cancelled) return;
-          setData(result);
-          setLoading(false);
-        })
-        .catch((err: Error) => {
-          if (cancelled) return;
-          setError(err.message);
-          setLoading(false);
-        });
-    });
+    api
+      .getWaterBudget(selectedEntityId)
+      .then((result) => {
+        if (cancelled) return;
+        setData(result as unknown as WaterBudgetData);
+        setLoading(false);
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setError(err.message);
+        setLoading(false);
+      });
 
     return () => { cancelled = true; };
-  }, [selectedEntityId, selectedEntityType]);
+  }, [selectedEntityId, selectedEntityType, api]);
 
   if (!selectedEntityId || selectedEntityType !== 'AgriParcel') return null;
 

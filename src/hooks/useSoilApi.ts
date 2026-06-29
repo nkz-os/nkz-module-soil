@@ -1,4 +1,5 @@
 import { useAPI } from '@nekazari/module-kit';
+import { parcelApiPath } from '../lib/normalizeParcelId';
 
 interface SoilSummary {
   horizons: Array<{
@@ -34,12 +35,15 @@ export function useSoilApi() {
     post: api.post.bind(api),
 
     getSummary: (parcelId: string) =>
-      api.get<SoilSummary>(`/parcel/${parcelId}/summary`),
+      api.get<SoilSummary>(`/parcel/${parcelApiPath(parcelId)}/summary`),
 
     getHorizons: (parcelId: string, depth = '0-30') =>
       api.get<{ horizons: SoilSummary['horizons'] }>(
-        `/parcel/${parcelId}/horizons?depth=${depth}`
+        `/parcel/${parcelApiPath(parcelId)}/horizons?depth=${encodeURIComponent(depth)}`
       ),
+
+    getWaterBudget: (parcelId: string) =>
+      api.get<Record<string, unknown>>(`/parcel/${parcelApiPath(parcelId)}/water-budget`),
 
     getParcelsGeoJson: (attribute: string, scope: 'selected' | 'all', parcel?: string) =>
       api.get<{ type: string; features: Array<{ geometry: unknown; properties: Record<string, unknown> }> }>(
@@ -54,7 +58,7 @@ export function useSoilApi() {
       api.post('/sampling-points/batch', formData),
 
     forceIngest: (parcelId: string) =>
-      api.post(`/parcel/${parcelId}/ingest`, {}),
+      api.post(`/parcel/${parcelApiPath(parcelId)}/ingest`, {}),
 
     getMetrics: () =>
       api.get<{ providers: Array<{

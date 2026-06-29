@@ -19,7 +19,7 @@ async def parcel_water_budget(parcel_id: str, auth: AuthContext = require_auth()
     """Return the water budget for a parcel."""
     async with OrionClient(auth.tenant_id) as orion:
         entities = await orion.query_entities(
-            type="AgriSoil",
+            type="AgriSoilExtended",
             q=parcel_ref_query(parcel_id),
             limit=1,
         )

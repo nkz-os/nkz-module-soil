@@ -37,16 +37,17 @@ export function useSoilLayerContext(): SoilLayerState {
   return v;
 }
 
-const API_BASE: string =
-  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_API_URL) ||
-  'https://nkz.robotika.cloud';
-
 /**
- * fetchSoilLayerContext — authenticated fetch to the soil backend API.
- * Includes credentials (cookies) for session-based auth.
+ * fetchSoilLayerContext — same-origin fetch to the soil module API (via api-gateway).
+ * Uses relative /api/soil so session cookies work on nekazari.robotika.cloud.
  */
 export async function fetchSoilLayerContext(path: string): Promise<any> {
-  const resp = await fetch(`${API_BASE}/api/soil${path}`, {
+  const suffix = path.startsWith('/v1/soil')
+    ? path.slice('/v1/soil'.length)
+    : path.startsWith('/')
+      ? path
+      : `/${path}`;
+  const resp = await fetch(`/api/soil${suffix}`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   });
