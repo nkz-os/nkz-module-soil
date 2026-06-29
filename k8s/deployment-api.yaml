@@ -17,7 +17,7 @@ spec:
         - name: api
           # Pin by digest after each GHCR push (amd64 manifest). Update via:
           # docker manifest inspect ghcr.io/nkz-os/nkz-module-soil/soil-api:latest
-          image: ghcr.io/nkz-os/nkz-module-soil/soil-api@sha256:00fae15da4fe78e8570ce3aecfe4867e3933e4cec9bd32806ff1312f8440038a  # master f7996b2: Fix soil parcel API paths and AgriSoilExtended lookup
+          image: ghcr.io/nkz-os/nkz-module-soil/soil-api:3483b09  # master f7996b2: Fix soil parcel API paths and AgriSoilExtended lookup
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000

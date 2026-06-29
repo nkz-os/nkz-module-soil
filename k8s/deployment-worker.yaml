@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: ghcr.io/nkz-os/nkz-module-soil/soil-worker@sha256:993b24ea73618e81c9f1e09a15144e36c64d4a7438ccbbb96f242d868368e4a4  # master f7996b2: Fix soil parcel API paths and AgriSoilExtended lookup
+          image: ghcr.io/nkz-os/nkz-module-soil/soil-worker:3483b09  # master f7996b2: Fix soil parcel API paths and AgriSoilExtended lookup
           command: ["arq", "nkz_soil.workers.ingest.WorkerSettings"]
           imagePullPolicy: IfNotPresent
           envFrom:
