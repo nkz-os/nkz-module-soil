@@ -26,8 +26,10 @@ interface SoilSummary {
   }>;
 }
 
+const SOIL_API_BASE = '/api/soil';
+
 export function useSoilApi() {
-  const api = useAPI();
+  const api = useAPI(SOIL_API_BASE);
 
   return {
     // Expose raw get/post for consumers that need generic HTTP access

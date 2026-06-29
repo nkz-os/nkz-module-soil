@@ -5,6 +5,7 @@ import { SlotShell } from '@nekazari/viewer-kit';
 import { useSoilApi } from '../hooks/useSoilApi';
 import { ModuleAttribution } from '../components/ModuleAttribution';
 import { PenetrometerForm } from '../components/PenetrometerForm';
+import { ngsiValue, soilHorizons } from '../lib/ngsiValue';
 
 export function SoilPanel({ entityId }: { entityId?: string }) {
   const { t } = useTranslation('soil');
@@ -28,7 +29,7 @@ export function SoilPanel({ entityId }: { entityId?: string }) {
     );
   }
 
-  const horizons = (summary.horizons as Array<Record<string, unknown>>) || [];
+  const horizons = soilHorizons(summary) as Array<Record<string, unknown>>;
   const horizon = horizons.find(
     (h) => h.depthFrom === parseInt(selectedHorizon.split('-')[0]) &&
            h.depthTo === parseInt(selectedHorizon.split('-')[1])
@@ -38,7 +39,7 @@ export function SoilPanel({ entityId }: { entityId?: string }) {
     <SlotShell moduleId="soil" title={t('title')}>
       <div className="space-y-3">
         <div className="text-nkz-xs text-nkz-muted">
-          {t('source')}: {String(summary.dataSource || '')}
+          {t('source')}: {String(ngsiValue(summary.dataSource) ?? '')}
         </div>
 
         <div className="flex items-center gap-2">
@@ -84,12 +85,12 @@ export function SoilPanel({ entityId }: { entityId?: string }) {
                 <span className="font-medium">{String(horizon.ksatSaturated)} mm/h</span>
               </div>
             )}
-            {(summary.relativeCompaction as Array<Record<string, unknown>> | null)?.[0] && (
+            {(ngsiValue<Array<Record<string, unknown>>>(summary.relativeCompaction) ?? [])[0] && (
               <div className="flex justify-between">
                 <span>{t('compaction')}:</span>
                 <span className="font-medium">
-                  {String((summary.relativeCompaction as Array<Record<string, unknown>>)[0].classification)}{' '}
-                  ({String((summary.relativeCompaction as Array<Record<string, unknown>>)[0].value)}%)
+                  {String((ngsiValue<Array<Record<string, unknown>>>(summary.relativeCompaction) ?? [])[0].classification)}{' '}
+                  ({String((ngsiValue<Array<Record<string, unknown>>>(summary.relativeCompaction) ?? [])[0].value)}%)
                 </span>
               </div>
             )}

@@ -4,6 +4,7 @@ import { SlotShellCompact } from '@nekazari/viewer-kit';
 import { useSearchParams } from 'react-router-dom';
 import { useSoilApi } from '../hooks/useSoilApi';
 import { useEntities } from '@nekazari/module-kit';
+import { ngsiValue, soilHorizons } from '../lib/ngsiValue';
 
 type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
 
@@ -219,7 +220,7 @@ function DashboardTab() {
           seen.add(pid);
           combined.push({
             parcelId: pid,
-            parcelName: (p as any).name || null,
+            parcelName: ngsiValue<string>((p as NgsiLdEntity).name) ?? null,
             soilEntity: soilByParcel.get(pid) || null,
           });
         }
@@ -308,10 +309,10 @@ function DashboardTab() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto pr-2">
             {filteredParcels.map((p) => {
               const soil = p.soilEntity;
-              const dataSource = soil?.dataSource?.value;
-              const uncertainty = soil?.uncertainty?.value;
-              const horizonList = soil?.horizons?.value || [];
-              const topH = horizonList[0] || {};
+              const dataSource = ngsiValue<string>(soil?.dataSource);
+              const uncertainty = ngsiValue<number>(soil?.uncertainty);
+              const horizonList = soilHorizons(soil as Record<string, unknown> | null);
+              const topH = (horizonList[0] || {}) as Record<string, unknown>;
               const hasSoil = !!soil;
 
               return (
@@ -336,16 +337,16 @@ function DashboardTab() {
                           <span className="ml-2">σ={uncertainty.toFixed(2)}</span>
                         )}
                       </div>
-                      {(topH.hydrologicGroup || topH.ksatSaturated) && (
+                      {(ngsiValue<string>(topH.hydrologicGroup) || topH.ksatSaturated != null) && (
                         <div className="flex gap-3 mt-1 ml-4 text-nkz-xs">
-                          {topH.hydrologicGroup && (
+                          {ngsiValue<string>(topH.hydrologicGroup) && (
                             <span className="text-nkz-muted">
-                              {t('hydrologicGroup')}: <span className="font-medium">{String(topH.hydrologicGroup)}</span>
+                              {t('hydrologicGroup')}: <span className="font-medium">{ngsiValue<string>(topH.hydrologicGroup)}</span>
                             </span>
                           )}
                           {topH.ksatSaturated != null && (
                             <span className="text-nkz-muted">
-                              Ksat: <span className="font-medium">{String(topH.ksatSaturated)} mm/h</span>
+                              Ksat: <span className="font-medium">{String(ngsiValue(topH.ksatSaturated))} mm/h</span>
                             </span>
                           )}
                         </div>
@@ -382,7 +383,10 @@ function DashboardTab() {
           </div>
         </div>
       )}
-      {summary && !summaryLoading && selectedParcel && (
+      {summary && !summaryLoading && selectedParcel && (() => {
+        const detailHorizons = soilHorizons(summary as Record<string, unknown>) as SoilHorizon[];
+        const compaction = ngsiValue<CompactionEntry[]>(summary.relativeCompaction) ?? [];
+        return (
         <div className="bg-nkz-surface rounded-nkz-md p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-nkz-lg font-medium">{t('dashboard.detail')}</h2>
@@ -390,24 +394,24 @@ function DashboardTab() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Texture triangle */}
-            {summary.horizons?.value?.[0] && (
+            {detailHorizons[0] && (
               <div className="flex flex-col items-center">
                 <h3 className="text-nkz-sm font-medium mb-2">{t('dashboard.texture')}</h3>
                 <TextureTriangle
-                  sand={summary.horizons.value[0].sand}
-                  silt={summary.horizons.value[0].silt}
-                  clay={summary.horizons.value[0].clay}
-                  textureClass={summary.horizons.value[0].usdaTextureClass}
+                  sand={detailHorizons[0].sand}
+                  silt={detailHorizons[0].silt}
+                  clay={detailHorizons[0].clay}
+                  textureClass={detailHorizons[0].usdaTextureClass}
                 />
               </div>
             )}
 
             {/* Inline profile bars */}
-            {summary.horizons?.value && summary.horizons.value.length > 1 && (
+            {detailHorizons.length > 1 && (
               <div className="col-span-full">
                 <h3 className="text-nkz-sm font-medium mb-2">{t('profile.title', 'Soil Profile')}</h3>
                 <div className="flex gap-1 h-16 items-end">
-                  {summary.horizons.value.map((h: SoilHorizon) => {
+                  {detailHorizons.map((h: SoilHorizon) => {
                     const pct = ((h.depthTo - h.depthFrom) / 100) * 100;
                     const colors = ['#e9d8a6','#e6c878','#d8a657','#bb9457','#a3b18a','#8cb369',
                                     '#c98b5b','#9c6644','#7f9172','#9e2a2b','#6d597a','#582f0e'];
@@ -433,7 +437,7 @@ function DashboardTab() {
             {/* Pedotransfer results */}
             <div className="space-y-2">
               <h3 className="text-nkz-sm font-medium mb-2">{t('dashboard.properties')}</h3>
-              {summary.horizons?.value?.map((h: SoilHorizon) => (
+              {detailHorizons.map((h: SoilHorizon) => (
                 <div key={`${h.depthFrom}-${h.depthTo}`} className="text-nkz-xs space-y-1 border-b border-nkz-border/50 pb-2">
                   <div className="font-medium text-nkz-muted">{h.depthFrom}–{h.depthTo} cm</div>
                   {h.usdaTextureClass && (
@@ -466,11 +470,11 @@ function DashboardTab() {
           </div>
 
           {/* Compaction */}
-          {summary.relativeCompaction?.value && summary.relativeCompaction.value.length > 0 && (
+          {compaction.length > 0 && (
             <div className="mt-4 pt-4 border-t border-nkz-border">
               <h3 className="text-nkz-sm font-medium mb-2">{t('compaction')}</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {summary.relativeCompaction.value.map((rc: CompactionEntry) => (
+                {compaction.map((rc: CompactionEntry) => (
                   <div key={`${rc.depthFrom}-${rc.depthTo}`} className="text-nkz-xs text-center p-2 rounded-nkz-sm bg-nkz-muted/10">
                     <div className="font-medium">{rc.depthFrom}–{rc.depthTo} cm</div>
                     <div className={`${compactionColor(rc.classification)}`}>
@@ -484,15 +488,16 @@ function DashboardTab() {
 
           {/* Attribution */}
           <div className="mt-4 pt-4 border-t border-nkz-border text-nkz-xs text-nkz-muted">
-            {t('source')}: {summary.dataSource?.value || '—'}
-            {summary.uncertainty?.value != null && (
+            {t('source')}: {ngsiValue<string>(summary.dataSource) || '—'}
+            {ngsiValue<number>(summary.uncertainty) != null && (
               <span className="ml-4">
-                {t('uncertainty')}: {String(summary.uncertainty.value)}
+                {t('uncertainty')}: {String(ngsiValue<number>(summary.uncertainty))}
               </span>
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
