@@ -10,6 +10,7 @@ from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
+from nkz_soil.util.nodata import sanitize_horizons
 
 router = APIRouter()
 
@@ -38,7 +39,7 @@ async def parcel_summary(parcel_id: str, auth: AuthContext = require_auth()):
     async with OrionClient(auth.tenant_id) as orion:
         entity = await _first_agri_soil(orion, parcel_id)
         return {
-            "horizons": entity.get("horizons", {}).get("value", []),
+            "horizons": sanitize_horizons(entity.get("horizons", {}).get("value", [])),
             "dataSource": _prop_value(entity, "dataSource", ""),
             "uncertainty": _prop_value(entity, "uncertainty", 0),
             "relativeCompaction": _prop_value(entity, "relativeCompaction"),

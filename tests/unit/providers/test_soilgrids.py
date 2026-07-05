@@ -89,6 +89,40 @@ async def test_fetch_returns_horizons(provider):
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_fetch_rest_skips_nodata_ph(provider):
+    mock_response = {
+        "properties": {
+            "layers": [
+                {
+                    "name": "phh2o",
+                    "unit_measure": {"d_factor": 1},
+                    "depths": [
+                        {
+                            "range": {"top_depth": 0, "bottom_depth": 5},
+                            "values": {"mean": -3276.8},
+                        }
+                    ],
+                },
+            ]
+        }
+    }
+    respx.get("https://rest.isric.org/soilgrids/v2.0/properties/query").mock(
+        return_value=Response(200, json=mock_response)
+    )
+    with patch("nkz_soil.providers.soilgrids._HAS_RASTERIO", False):
+        result = await provider.fetch(
+            geometry={
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+            },
+            properties=[SoilProperty.PH],
+            depths=[DepthInterval(depth_from=0, depth_to=5)],
+        )
+    assert result.horizons[0].ph is None
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_health_ok(provider):
     respx.get("https://files.isric.org/soilgrids/latest/data/").mock(
         return_value=Response(200)

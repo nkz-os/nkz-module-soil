@@ -21,6 +21,7 @@ from nkz_soil.models.domain import (
     Horizon,
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
+from nkz_soil.util.nodata import clean_nodata_value, is_soilgrids_nodata
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ class SoilGridsProvider:
                     value = await asyncio.to_thread(
                         self._read_cog_pixel, rasterio, cog_url, lon, lat
                     )
-                    if value is not None and value not in (-9999, -3276.8, -3.40282347e+38):
+                    if value is not None and not is_soilgrids_nodata(value):
                         factor = UNIT_FACTORS.get(webdav_name, 1.0)
                         horizon_data[self._map_layer_name(webdav_name)] = round(value / factor, 2)
                 except Exception as e:
@@ -256,8 +257,11 @@ class SoilGridsProvider:
                     ):
                         value = d.get("values", {}).get("mean", 0)
                         unit_factor = layer.get("unit_measure", {}).get("d_factor", 1)
+                        scaled = round(value * unit_factor, 2)
+                        if is_soilgrids_nodata(scaled):
+                            continue
                         mapped_name = self._map_layer_name(name)
-                        horizon_data[mapped_name] = round(value * unit_factor, 2)
+                        horizon_data[mapped_name] = scaled
             horizons.append(Horizon(**horizon_data))
 
         return SoilDataResult(

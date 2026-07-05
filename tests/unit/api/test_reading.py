@@ -53,6 +53,31 @@ def test_parcel_summary_found(client, mock_orion):
     assert len(body["horizons"]) == 1
 
 
+def test_parcel_summary_sanitizes_nodata_ph(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "hasAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
+            "horizons": {
+                "value": [{"depthFrom": 0, "depthTo": 30, "ph": -3276.8, "sand": 45}]
+            },
+            "dataSource": {"value": "soilgrids"},
+        }
+    ]
+    resp = client.get(
+        "/v1/soil/parcel/test-1/summary",
+        headers={
+            "X-Tenant-ID": "tenant1",
+            "X-User-ID": "u1",
+            "X-User-Roles": "GestorAgricola",
+        },
+    )
+    assert resp.status_code == 200
+    horizon = resp.json()["horizons"][0]
+    assert "ph" not in horizon
+    assert horizon["sand"] == 45
+
+
 def test_parcel_horizons(client, mock_orion):
     mock_orion.query_entities.return_value = [
         {
