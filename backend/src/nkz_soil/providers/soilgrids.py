@@ -21,7 +21,7 @@ from nkz_soil.models.domain import (
     Horizon,
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
-from nkz_soil.util.nodata import clean_nodata_value, is_soilgrids_nodata
+from nkz_soil.util.nodata import is_soilgrids_nodata
 
 logger = logging.getLogger(__name__)
 

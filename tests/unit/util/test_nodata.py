@@ -1,4 +1,4 @@
-from nkz_soil.util.nodata import clean_nodata_value, is_soilgrids_nodata, sanitize_horizon
+from nkz_soil.util.nodata import is_soilgrids_nodata, sanitize_horizon
 
 
 def test_is_soilgrids_nodata_sentinels():
