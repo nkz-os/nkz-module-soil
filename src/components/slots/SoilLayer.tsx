@@ -195,7 +195,9 @@ export function SoilLayer() {
     if (!viewer || isRaster || !dsRef.current || !visible) return;
     const Cesium = (window as { Cesium?: typeof import('cesium') }).Cesium;
     if (!Cesium) return;
-    const ds = dsRef.current as { entities?: { values: Array<{ polygon?: { material?: { color?: { withAlpha: (a: number) => unknown } } } }> } } };
+    const ds = dsRef.current as {
+      entities?: { values: Array<{ polygon?: { material?: { color?: { withAlpha: (a: number) => unknown } } } }> };
+    };
     if (!ds.entities) return;
     for (const ent of ds.entities.values) {
       const mat = ent.polygon?.material as { color?: { withAlpha: (a: number) => unknown } } | undefined;
