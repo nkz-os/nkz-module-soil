@@ -33,6 +33,14 @@ export function getSoilLayerState(): SoilLayerState {
 }
 
 export function setSoilLayerState(patch: Partial<SoilLayerState>): void {
+  let changed = false;
+  for (const key of Object.keys(patch) as (keyof SoilLayerState)[]) {
+    if (state[key] !== patch[key]) {
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return;
   state = { ...state, ...patch };
   emit();
 }
