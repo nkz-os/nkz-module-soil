@@ -152,6 +152,7 @@ export function SoilProfileCard({ entityId, maxDepth = 100 }: SoilProfileCardPro
               <th className="text-right py-1 pr-2">{t('profile.fc', 'FC')}</th>
               <th className="text-right py-1 pr-2">{t('profile.wp', 'WP')}</th>
               <th className="text-right py-1 pr-2">{t('profile.ksat', 'Ksat')}</th>
+              <th className="text-right py-1 pr-2">{t('fields.ph', 'pH')}</th>
               <th className="text-center py-1">{t('profile.group', 'SCS')}</th>
             </tr>
           </thead>
@@ -176,6 +177,9 @@ export function SoilProfileCard({ entityId, maxDepth = 100 }: SoilProfileCardPro
                 </td>
                 <td className="py-1 pr-2 text-right">
                   {h.ksatSaturated != null ? `${h.ksatSaturated.toFixed(1)} mm/h` : '—'}
+                </td>
+                <td className="py-1 pr-2 text-right">
+                  {h.ph != null ? h.ph.toFixed(1) : '—'}
                 </td>
                 <td className="py-1 text-center">
                   {h.hydrologicGroup ? (

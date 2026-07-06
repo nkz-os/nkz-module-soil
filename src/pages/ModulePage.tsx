@@ -337,11 +337,16 @@ function DashboardTab() {
                           <span className="ml-2">σ={uncertainty.toFixed(2)}</span>
                         )}
                       </div>
-                      {(ngsiValue<string>(topH.hydrologicGroup) || topH.ksatSaturated != null) && (
+                      {(ngsiValue<string>(topH.hydrologicGroup) || topH.ksatSaturated != null || topH.ph != null) && (
                         <div className="flex gap-3 mt-1 ml-4 text-nkz-xs">
                           {ngsiValue<string>(topH.hydrologicGroup) && (
                             <span className="text-nkz-muted">
                               {t('hydrologicGroup')}: <span className="font-medium">{ngsiValue<string>(topH.hydrologicGroup)}</span>
+                            </span>
+                          )}
+                          {topH.ph != null && (
+                            <span className="text-nkz-muted">
+                              {t('fields.ph')}: <span className="font-medium">{String(ngsiValue<number>(topH.ph))}</span>
                             </span>
                           )}
                           {topH.ksatSaturated != null && (
@@ -456,6 +461,12 @@ function DashboardTab() {
                     <div className="flex justify-between">
                       <span>{t('ksat')}</span>
                       <span className="font-medium">{h.ksatSaturated} mm/h</span>
+                    </div>
+                  )}
+                  {h.ph != null && (
+                    <div className="flex justify-between">
+                      <span>{t('fields.ph')}</span>
+                      <span className="font-medium">{h.ph}</span>
                     </div>
                   )}
                   {h.availableWaterCapacity != null && (

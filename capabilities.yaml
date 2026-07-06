@@ -82,7 +82,7 @@ publishes:
         unitCode: null
         temporal: static
         spatial: polygon-aggregated
-        sources: [LUCAS, ESDB-Raster, lab]
+        sources: [LUCAS, ESDB-Raster, SoilGrids, IDENA, lab]
         entitlement: open
       - name: electricalConductivity
         unitCode: D10
