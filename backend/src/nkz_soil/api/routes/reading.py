@@ -55,11 +55,11 @@ async def parcel_horizons(
     async with OrionClient(auth.tenant_id) as orion:
         entity = await _first_agri_soil(orion, parcel_id)
         horizons = entity.get("horizons", {}).get("value", [])
-        filtered = [
+        filtered = sanitize_horizons([
             h
             for h in horizons
             if h["depthFrom"] >= depth_from and h["depthTo"] <= depth_to
-        ]
+        ])
         return {"horizons": filtered}
 
 

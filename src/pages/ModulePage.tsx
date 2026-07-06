@@ -5,6 +5,8 @@ import { useSearchParams } from 'react-router-dom';
 import { useSoilApi } from '../hooks/useSoilApi';
 import { useEntities } from '@nekazari/module-kit';
 import { ngsiValue, soilHorizons } from '../lib/ngsiValue';
+import { sanitizeHorizons, sanitizeCompaction, isSoilgridsNodata } from '../lib/sanitizeHorizon';
+import { SoilProfileCard } from '../components/SoilProfileCard';
 
 type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
 
@@ -255,24 +257,22 @@ function DashboardTab() {
     setSearchParams(prev => { prev.set('parcel', id); return prev; }, { replace: true });
   };
 
-  // Fetch summary when parcel selected
+  // Always fetch sanitized summary from API (Orion cache may carry nodata sentinels).
   useEffect(() => {
     if (!selectedParcel) return;
-    const existing = soilByParcel.get(selectedParcel);
-    if (existing) {
-      // Already have the full entity from useEntities
-      setSummary(existing);
-      setSummaryError(false);
-      setSummaryLoading(false);
-    } else {
-      // No soil data yet — try fetching anyway (the backend might have it)
-      setSummaryLoading(true);
-      api.getSummary(selectedParcel)
-        .then((data: unknown) => { setSummary(data as AgriSoilEntity); setSummaryError(false); })
-        .catch(() => { setSummary(null); setSummaryError(true); })
-        .finally(() => setSummaryLoading(false));
-    }
-  }, [selectedParcel, api, soilByParcel]);
+    setSummaryLoading(true);
+    setSummaryError(false);
+    api.getSummary(selectedParcel)
+      .then((data: unknown) => {
+        setSummary(data as AgriSoilEntity);
+        setSummaryError(false);
+      })
+      .catch(() => {
+        setSummary(null);
+        setSummaryError(true);
+      })
+      .finally(() => setSummaryLoading(false));
+  }, [selectedParcel, api]);
 
   const filteredParcels = React.useMemo(() => {
     if (!searchTerm) return allParcels;
@@ -312,7 +312,9 @@ function DashboardTab() {
               const dataSource = ngsiValue<string>(soil?.dataSource);
               const uncertainty = ngsiValue<number>(soil?.uncertainty);
               const horizonList = soilHorizons(soil as Record<string, unknown> | null);
-              const topH = (horizonList[0] || {}) as Record<string, unknown>;
+              const topH = sanitizeHorizons(horizonList as Record<string, unknown>[])[0] || {};
+              const topPh = ngsiValue<number>(topH.ph);
+              const topKsat = ngsiValue<number>(topH.ksatSaturated);
               const hasSoil = !!soil;
 
               return (
@@ -337,21 +339,21 @@ function DashboardTab() {
                           <span className="ml-2">σ={uncertainty.toFixed(2)}</span>
                         )}
                       </div>
-                      {(ngsiValue<string>(topH.hydrologicGroup) || topH.ksatSaturated != null || topH.ph != null) && (
+                      {(ngsiValue<string>(topH.hydrologicGroup) || (topPh != null && !isSoilgridsNodata(topPh)) || topKsat != null) && (
                         <div className="flex gap-3 mt-1 ml-4 text-nkz-xs">
                           {ngsiValue<string>(topH.hydrologicGroup) && (
                             <span className="text-nkz-muted">
                               {t('hydrologicGroup')}: <span className="font-medium">{ngsiValue<string>(topH.hydrologicGroup)}</span>
                             </span>
                           )}
-                          {topH.ph != null && (
+                          {topPh != null && !isSoilgridsNodata(topPh) && (
                             <span className="text-nkz-muted">
-                              {t('fields.ph')}: <span className="font-medium">{String(ngsiValue<number>(topH.ph))}</span>
+                              {t('fields.ph')}: <span className="font-medium">{String(topPh)}</span>
                             </span>
                           )}
-                          {topH.ksatSaturated != null && (
+                          {topKsat != null && (
                             <span className="text-nkz-muted">
-                              Ksat: <span className="font-medium">{String(ngsiValue(topH.ksatSaturated))} mm/h</span>
+                              Ksat: <span className="font-medium">{String(topKsat)} mm/h</span>
                             </span>
                           )}
                         </div>
@@ -389,8 +391,13 @@ function DashboardTab() {
         </div>
       )}
       {summary && !summaryLoading && selectedParcel && (() => {
-        const detailHorizons = soilHorizons(summary as Record<string, unknown>) as SoilHorizon[];
-        const compaction = ngsiValue<CompactionEntry[]>(summary.relativeCompaction) ?? [];
+        const detailHorizons = sanitizeHorizons(
+          soilHorizons(summary as Record<string, unknown>) as Record<string, unknown>[],
+        ) as SoilHorizon[];
+        const compaction = sanitizeCompaction(
+          (ngsiValue<CompactionEntry[]>(summary.relativeCompaction) ?? []) as CompactionEntry[],
+        );
+        const parcelId = getParcelId(summary);
         return (
         <div className="bg-nkz-surface rounded-nkz-md p-6">
           <div className="flex items-center justify-between mb-4">
@@ -411,31 +418,10 @@ function DashboardTab() {
               </div>
             )}
 
-            {/* Inline profile bars */}
-            {detailHorizons.length > 1 && (
+            {/* Soil profile (vertical, readable) */}
+            {detailHorizons.length > 0 && (
               <div className="col-span-full">
-                <h3 className="text-nkz-sm font-medium mb-2">{t('profile.title', 'Soil Profile')}</h3>
-                <div className="flex gap-1 h-16 items-end">
-                  {detailHorizons.map((h: SoilHorizon) => {
-                    const pct = ((h.depthTo - h.depthFrom) / 100) * 100;
-                    const colors = ['#e9d8a6','#e6c878','#d8a657','#bb9457','#a3b18a','#8cb369',
-                                    '#c98b5b','#9c6644','#7f9172','#9e2a2b','#6d597a','#582f0e'];
-                    const classes = ['sand','loamy-sand','sandy-loam','loam','silt-loam','silt',
-                                     'sandy-clay-loam','clay-loam','silty-clay-loam','sandy-clay','silty-clay','clay'];
-                    const idx = h.usdaTextureClass ? classes.indexOf(h.usdaTextureClass) % 12 : -1;
-                    const color = idx >= 0 ? colors[idx] : '#ccc';
-                    return (
-                      <div key={`bar-${h.depthFrom}-${h.depthTo}`}
-                           className="flex-1 rounded-t-md flex flex-col items-center justify-end"
-                           style={{ height: `${Math.max(pct, 3)}%`, backgroundColor: color, minHeight: '8px' }}
-                           title={`${h.depthFrom}–${h.depthTo} cm: ${h.usdaTextureClass || ''}`}>
-                        <span className="text-[8px] text-white mix-blend-difference font-medium px-0.5 truncate w-full text-center">
-                          {h.usdaTextureClass || ''}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                <SoilProfileCard entityId={parcelId} maxDepth={100} />
               </div>
             )}
 

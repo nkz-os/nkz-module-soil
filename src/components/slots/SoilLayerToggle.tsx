@@ -1,11 +1,17 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { useViewerOptional } from '@nekazari/sdk';
 import { useSoilLayerContext, LayerScope } from '../../services/soilLayerContext';
 import { ModuleAttribution } from '../ModuleAttribution';
 import { LAYER_ATTRIBUTES, legendFor } from '../../lib/soilLayerColor';
 
 export function SoilLayerToggle() {
   const { t } = useTranslation('soil');
+  const viewerCtx = useViewerOptional();
+  const selectedEntityId = (viewerCtx as { selectedEntityId?: string | null })?.selectedEntityId;
+  const selectedType = (viewerCtx as { selectedEntityType?: string | null })?.selectedEntityType;
+  const hasParcel = selectedType === 'AgriParcel' && !!selectedEntityId;
+
   const { attribute, setAttribute, visible, setVisible, opacity, setOpacity, scope, setScope, status } =
     useSoilLayerContext();
 
@@ -18,13 +24,21 @@ export function SoilLayerToggle() {
     : null;
 
   return (
-    <div className="space-y-2 text-nkz-xs">
+    <div className="space-y-2 text-nkz-xs border border-nkz-border/50 rounded-nkz-sm p-2">
       <label className="flex items-center gap-2">
-        <input type="checkbox" checked={visible} onChange={(e) => setVisible(e.target.checked)} />
+        <input
+          type="checkbox"
+          checked={visible}
+          onChange={(e) => setVisible(e.target.checked)}
+          disabled={scope === 'selected' && !hasParcel}
+        />
         <span className="font-medium">{t('layer.title', 'Soil')}</span>
       </label>
       {visible && (
-        <div className="space-y-2 pl-5">
+        <div className="space-y-2 pl-1">
+          {!hasParcel && scope === 'selected' && (
+            <p className="text-nkz-muted italic">{t('layer.status.noSelection', 'Selecciona una parcela')}</p>
+          )}
           <select value={attribute} onChange={(e) => setAttribute(e.target.value)}
                   className="text-nkz-xs border-nkz-border rounded-nkz-sm w-full">
             {LAYER_ATTRIBUTES.map(a => (
