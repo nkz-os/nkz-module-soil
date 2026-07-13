@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SlotShellCompact } from '@nekazari/viewer-kit';
 import { useSearchParams } from 'react-router-dom';
-import { useSoilApi, type SoilSummary } from '../hooks/useSoilApi';
+import { useSoilApi, type SoilSummary, type SoilHorizon } from '../hooks/useSoilApi';
 import { useEntities } from '@nekazari/module-kit';
 import { ngsiValue, soilHorizons } from '../lib/ngsiValue';
 import { sanitizeHorizons, sanitizeCompaction, isSoilgridsNodata } from '../lib/sanitizeHorizon';
@@ -11,24 +11,11 @@ import { SoilProfileCard } from '../components/SoilProfileCard';
 type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
 
 // ─── Types ───────────────────────────────────────────────────────────────
-
-interface SoilHorizon {
-  depthFrom: number;
-  depthTo: number;
-  sand?: number;
-  silt?: number;
-  clay?: number;
-  organicCarbon?: number;
-  bulkDensity?: number;
-  ph?: number;
-  ksatSaturated?: number;
-  availableWaterCapacity?: number;
-  fieldCapacity?: number;
-  wiltingPoint?: number;
-  hydrologicGroup?: string;
-  usdaTextureClass?: string;
-  penetrationResistance?: number;
-}
+// SoilHorizon is imported from useSoilApi.ts — it's the flat shape returned
+// by GET /parcel/{id}/summary (backend already unwraps NGSI-LD Property
+// wrappers server-side). AgriSoilEntity below is the *other* shape: the raw
+// NGSI-LD entity as read directly from Orion via useEntities() — attributes
+// there are still `{ type, value }`-wrapped and must go through ngsiValue().
 
 interface CompactionEntry {
   depthFrom: number;
@@ -263,8 +250,8 @@ function DashboardTab() {
     setSummaryLoading(true);
     setSummaryError(false);
     api.getSummary(selectedParcel)
-      .then((data: unknown) => {
-        setSummary(data as AgriSoilEntity);
+      .then((data) => {
+        setSummary(data);
         setSummaryError(false);
       })
       .catch(() => {
@@ -391,18 +378,19 @@ function DashboardTab() {
         </div>
       )}
       {summary && !summaryLoading && selectedParcel && (() => {
-        const detailHorizons = sanitizeHorizons(
-          soilHorizons(summary as Record<string, unknown>) as Record<string, unknown>[],
-        ) as SoilHorizon[];
-        const compaction = sanitizeCompaction(
-          (ngsiValue<CompactionEntry[]>(summary.relativeCompaction) ?? []) as CompactionEntry[],
-        );
-        const parcelId = getParcelId(summary);
+        // summary comes from GET /parcel/{id}/summary — already the flat
+        // SoilSummary shape (see useSoilApi.ts), so horizons/compaction are
+        // plain arrays already, no ngsiValue() unwrapping needed. It carries
+        // no id/hasAgriParcel (unlike AgriSoilEntity), so the parcel id is
+        // the one already selected, not derived from the summary payload.
+        const detailHorizons = sanitizeHorizons(summary.horizons);
+        const compaction = sanitizeCompaction(summary.relativeCompaction ?? []);
+        const parcelId = selectedParcel;
         return (
         <div className="bg-nkz-surface rounded-nkz-md p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-nkz-lg font-medium">{t('dashboard.detail')}</h2>
-            <RefreshSoilButton parcelId={getParcelId(summary)} />
+            <RefreshSoilButton parcelId={selectedParcel} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Texture triangle */}

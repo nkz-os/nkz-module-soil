@@ -1,10 +1,23 @@
 import { useEffect, useRef } from 'react';
 import { useViewerOptional, useViewerLayer } from '@nekazari/sdk';
+import type { GeoJsonDataSource } from 'cesium';
 import { useSoilLayerContext } from '../../services/soilLayerContext';
 import { useSoilApi } from '../../hooks/useSoilApi';
 import { soilLayerColor } from '../../lib/soilLayerColor';
 
 const RASTER_ATTRIBUTES = ['penetrationResistance'];
+
+// The ambient `cesium` module types Entity.polygon as `unknown` (Cesium's
+// real PolygonGraphics has far more members than this file touches — see
+// src/types/cesium.d.ts). Cast to this shape only at the point each style
+// property is actually set/read.
+interface SoilPolygonGraphics {
+  material?: unknown;
+  outline?: boolean;
+  outlineColor?: unknown;
+  heightReference?: unknown;
+  classificationType?: unknown;
+}
 
 function readFeatureValue(properties: unknown, Cesium: typeof import('cesium')): string | number | null {
   if (!properties || typeof properties !== 'object') return null;
@@ -26,7 +39,7 @@ export function SoilLayer() {
   // Visibility, opacity (0–100) and load status come from the host's unified
   // Layers menu via the shared LayerRegistry.
   const { visible, opacity, setStatus } = useViewerLayer('soil-raster');
-  const dsRef = useRef<{ destroy?: () => void } | null>(null);
+  const dsRef = useRef<GeoJsonDataSource | null>(null);
   const imageryRef = useRef<{ alpha?: number } | null>(null);
 
   const isRaster = RASTER_ATTRIBUTES.includes(attribute);
@@ -159,24 +172,18 @@ export function SoilLayer() {
         }
         return Cesium.GeoJsonDataSource.load(fc, { clampToGround: true });
       })
-      .then((ds: { entities: { values: Array<{ polygon?: unknown; properties?: unknown }> } } | null) => {
+      .then((ds: GeoJsonDataSource | null) => {
         if (!ds || cancelled || v.isDestroyed?.()) return;
         for (const ent of ds.entities.values) {
           const raw = readFeatureValue(ent.properties, Cesium);
           const hex = soilLayerColor(attribute, raw ?? null);
-          if (!ent.polygon) continue;
-          const poly = ent.polygon as {
-            material?: unknown;
-            outline?: boolean;
-            outlineColor?: unknown;
-            heightReference?: unknown;
-            classificationType?: unknown;
-          };
-          poly.material = Cesium.Color.fromCssColorString(hex).withAlpha(opacity / 100);
-          poly.outline = true;
-          poly.outlineColor = Cesium.Color.BLACK.withAlpha(0.45);
-          poly.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
-          poly.classificationType = Cesium.ClassificationType.TERRAIN;
+          const polygon = ent.polygon as SoilPolygonGraphics | undefined;
+          if (!polygon) continue;
+          polygon.material = Cesium.Color.fromCssColorString(hex).withAlpha(opacity / 100);
+          polygon.outline = true;
+          polygon.outlineColor = Cesium.Color.BLACK.withAlpha(0.45);
+          polygon.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
+          polygon.classificationType = Cesium.ClassificationType.TERRAIN;
         }
         v.dataSources?.add(ds);
         dsRef.current = ds;
@@ -195,17 +202,15 @@ export function SoilLayer() {
 
   // Opacity-only update for vector layer
   useEffect(() => {
-    if (!viewer || isRaster || !dsRef.current || !visible) return;
+    const ds = dsRef.current;
+    if (!viewer || isRaster || !ds || !visible) return;
     const Cesium = (window as { Cesium?: typeof import('cesium') }).Cesium;
     if (!Cesium) return;
-    const ds = dsRef.current as {
-      entities?: { values: Array<{ polygon?: { material?: { color?: { withAlpha: (a: number) => unknown } } } }> };
-    };
-    if (!ds.entities) return;
     for (const ent of ds.entities.values) {
-      const mat = ent.polygon?.material as { color?: { withAlpha: (a: number) => unknown } } | undefined;
-      if (mat?.color) {
-        ent.polygon!.material = mat.color.withAlpha(opacity / 100) as typeof ent.polygon.material;
+      const polygon = ent.polygon as SoilPolygonGraphics | undefined;
+      const mat = polygon?.material as { color?: { withAlpha: (a: number) => unknown } } | undefined;
+      if (polygon && mat?.color) {
+        polygon.material = mat.color.withAlpha(opacity / 100);
       }
     }
     (viewer as { scene?: { requestRender: () => void } }).scene?.requestRender();

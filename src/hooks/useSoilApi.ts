@@ -1,30 +1,41 @@
-import { useMemo } from 'react';
 import { useAPI } from '@nekazari/module-kit';
 import { parcelApiPath } from '../lib/normalizeParcelId';
 
+// Flat horizon shape as returned by GET /parcel/{id}/summary (already
+// unwrapped from NGSI-LD Property `{ type, value }` wrappers server-side —
+// see backend/src/nkz_soil/api/routes/reading.py::parcel_summary). Fields
+// mirror what the ingest worker writes per horizon
+// (backend/src/nkz_soil/workers/ingest.py).
+export interface SoilHorizon {
+  depthFrom: number;
+  depthTo: number;
+  sand?: number;
+  silt?: number;
+  clay?: number;
+  organicCarbon?: number;
+  bulkDensity?: number;
+  ph?: number;
+  ksatSaturated?: number;
+  availableWaterCapacity?: number;
+  fieldCapacity?: number;
+  wiltingPoint?: number;
+  hydrologicGroup?: string;
+  usdaTextureClass?: string;
+  penetrationResistance?: number;
+}
+
+export interface SoilCompactionEntry {
+  depthFrom: number;
+  depthTo: number;
+  value: number;
+  classification: string;
+}
+
 export interface SoilSummary {
-  horizons: Array<{
-    depthFrom: number;
-    depthTo: number;
-    sand?: number;
-    silt?: number;
-    clay?: number;
-    organicCarbon?: number;
-    bulkDensity?: number;
-    ph?: number;
-    ksatSaturated?: number;
-    availableWaterCapacity?: number;
-    hydrologicGroup?: string;
-    penetrationResistance?: number;
-  }>;
+  horizons: SoilHorizon[];
   dataSource: string;
   uncertainty: number;
-  relativeCompaction?: Array<{
-    depthFrom: number;
-    depthTo: number;
-    value: number;
-    classification: string;
-  }>;
+  relativeCompaction?: SoilCompactionEntry[];
 }
 
 const SOIL_API_BASE = '/api/soil';

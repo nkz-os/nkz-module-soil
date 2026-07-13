@@ -21,8 +21,13 @@ export function cleanNodataValue<T>(value: T): T | undefined {
   return value;
 }
 
-export function sanitizeHorizon(horizon: Record<string, unknown>): Record<string, unknown> {
-  const out = { ...horizon };
+export function sanitizeHorizon<T extends object>(horizon: T): T {
+  // Internally treated as an unknown-keyed bag so the sentinel-stripping
+  // logic below can freely read/delete numeric keys; the public signature
+  // stays generic so callers keep their concrete horizon type (SoilHorizon,
+  // or a plain Record<string, unknown> for NGSI-LD-derived callers) without
+  // an unsafe cast at the call site.
+  const out = { ...horizon } as unknown as Record<string, unknown>;
   for (const key of NUMERIC_KEYS) {
     if (!(key in out)) continue;
     const cleaned = cleanNodataValue(out[key]);
@@ -35,11 +40,11 @@ export function sanitizeHorizon(horizon: Record<string, unknown>): Record<string
   if (typeof ph === 'number' && (ph < 0 || ph > 14)) delete out.ph;
   const ksat = out.ksatSaturated;
   if (typeof ksat === 'number' && ksat < 0) delete out.ksatSaturated;
-  return out;
+  return out as unknown as T;
 }
 
-export function sanitizeHorizons(horizons: unknown[]): Record<string, unknown>[] {
-  return horizons.map((h) => sanitizeHorizon(h as Record<string, unknown>));
+export function sanitizeHorizons<T extends object>(horizons: T[]): T[] {
+  return horizons.map((h) => sanitizeHorizon(h));
 }
 
 export interface CompactionEntry {
