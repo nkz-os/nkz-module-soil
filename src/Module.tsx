@@ -22,6 +22,14 @@ export default defineModule({
     priority: 40,
   },
   slots: withModuleProvider(moduleSlots as never) as never,
+  viewerLayers: [
+    {
+      id: 'soil-raster',
+      titleKey: 'soil:layer.title',
+      supportsOpacity: true,
+      defaultVisible: false,
+    },
+  ],
   api: { basePath: '/api/soil' },
   requiredRoles: ['GestorAgricola', 'Administrador'],
   requiredPlan: 'pro',

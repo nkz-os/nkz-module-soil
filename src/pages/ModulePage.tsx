@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SlotShellCompact } from '@nekazari/viewer-kit';
 import { useSearchParams } from 'react-router-dom';
-import { useSoilApi } from '../hooks/useSoilApi';
+import { useSoilApi, type SoilSummary } from '../hooks/useSoilApi';
 import { useEntities } from '@nekazari/module-kit';
 import { ngsiValue, soilHorizons } from '../lib/ngsiValue';
 import { sanitizeHorizons, sanitizeCompaction, isSoilgridsNodata } from '../lib/sanitizeHorizon';
@@ -192,7 +192,7 @@ function DashboardTab() {
   const { data: soils, isLoading: soilsLoading } = useEntities<AgriSoilEntity>('AgriSoilExtended');
   const { data: parcels, isLoading: parcelsLoading } = useEntities<NgsiLdEntity>('AgriParcel');
   const [selectedParcel, setSelectedParcel] = useState<string | null>(null);
-  const [summary, setSummary] = useState<AgriSoilEntity | null>(null);
+  const [summary, setSummary] = useState<SoilSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');

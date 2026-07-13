@@ -2,7 +2,7 @@ import React from 'react';
 import { SoilPanel } from './SoilPanel';
 import { SoilProfileCard } from '../components/SoilProfileCard';
 import { SoilLayer } from '../components/slots/SoilLayer';
-import { SoilLayerToggle } from '../components/slots/SoilLayerToggle';
+import { SoilLayerControls } from '../components/slots/SoilLayerControls';
 import { WaterBudgetSlot } from '../components/slots/WaterBudgetSlot';
 import { SoilProvider } from '../services/soilLayerContext';
 
@@ -28,11 +28,10 @@ export const moduleSlots: ModuleViewerSlots = {
   'map-layer': [
     { id: 'soil-cesium-layer', moduleId: MODULE_ID, component: 'SoilLayer', priority: 10, localComponent: SoilLayer },
   ],
-  'layer-toggle': [
-    { id: 'soil-layer-toggle', moduleId: MODULE_ID, component: 'SoilLayerToggle', priority: 20,
-      localComponent: SoilLayerToggle },
-  ],
+  'layer-toggle': [],
   'context-panel': [
+    { id: 'soil-layer-controls', moduleId: MODULE_ID, component: 'SoilLayerControls', priority: 20,
+      localComponent: SoilLayerControls, showWhen: { entityType: ['AgriParcel'] } },
     { id: 'soil-context-panel', moduleId: MODULE_ID, component: 'SoilPanel', priority: 10, localComponent: SoilPanel },
     { id: 'soil-profile-card', moduleId: MODULE_ID, component: 'SoilProfileCard', priority: 5,
       localComponent: SoilProfileCard, showWhen: { entityType: ['AgriParcel'] } },

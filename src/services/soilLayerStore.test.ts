@@ -11,7 +11,7 @@ describe('soilLayerStore', () => {
     subscribeSoilLayer(listener);
     listener.mockClear();
 
-    setSoilLayerState({ status: getSoilLayerState().status });
+    setSoilLayerState({ attribute: getSoilLayerState().attribute });
 
     expect(listener).not.toHaveBeenCalled();
   });
@@ -21,13 +21,13 @@ describe('soilLayerStore', () => {
     const unsubscribe = subscribeSoilLayer(listener);
     listener.mockClear();
 
-    setSoilLayerState({ status: 'loading' });
+    setSoilLayerState({ scope: 'all' });
 
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(getSoilLayerState().status).toBe('loading');
+    expect(getSoilLayerState().scope).toBe('all');
 
     unsubscribe();
-    setSoilLayerState({ status: 'ready' });
+    setSoilLayerState({ scope: 'selected' });
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });

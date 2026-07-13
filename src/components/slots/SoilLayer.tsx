@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useViewerOptional } from '@nekazari/sdk';
+import { useViewerOptional, useViewerLayer } from '@nekazari/sdk';
 import { useSoilLayerContext } from '../../services/soilLayerContext';
 import { useSoilApi } from '../../hooks/useSoilApi';
 import { soilLayerColor } from '../../lib/soilLayerColor';
@@ -22,7 +22,10 @@ export function SoilLayer() {
   const viewer = (viewerCtx as { cesiumViewer?: unknown })?.cesiumViewer;
   const selectedEntityId = (viewerCtx as { selectedEntityId?: string | null })?.selectedEntityId;
   const api = useSoilApi();
-  const { attribute, visible, opacity, scope, setStatus } = useSoilLayerContext();
+  const { attribute, scope } = useSoilLayerContext();
+  // Visibility, opacity (0–100) and load status come from the host's unified
+  // Layers menu via the shared LayerRegistry.
+  const { visible, opacity, setStatus } = useViewerLayer('soil-raster');
   const dsRef = useRef<{ destroy?: () => void } | null>(null);
   const imageryRef = useRef<{ alpha?: number } | null>(null);
 
@@ -97,7 +100,7 @@ export function SoilLayer() {
           new Cesium.SingleTileImageryProvider({ url: data.url }),
         );
         if (layer) {
-          layer.alpha = opacity;
+          layer.alpha = opacity / 100;
           imageryRef.current = layer;
         }
         setStatus('ready');
@@ -113,7 +116,7 @@ export function SoilLayer() {
 
   useEffect(() => {
     if (imageryRef.current && isRaster) {
-      imageryRef.current.alpha = opacity;
+      imageryRef.current.alpha = opacity / 100;
     }
   }, [opacity, isRaster]);
 
@@ -169,7 +172,7 @@ export function SoilLayer() {
             heightReference?: unknown;
             classificationType?: unknown;
           };
-          poly.material = Cesium.Color.fromCssColorString(hex).withAlpha(opacity);
+          poly.material = Cesium.Color.fromCssColorString(hex).withAlpha(opacity / 100);
           poly.outline = true;
           poly.outlineColor = Cesium.Color.BLACK.withAlpha(0.45);
           poly.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
@@ -202,7 +205,7 @@ export function SoilLayer() {
     for (const ent of ds.entities.values) {
       const mat = ent.polygon?.material as { color?: { withAlpha: (a: number) => unknown } } | undefined;
       if (mat?.color) {
-        ent.polygon!.material = mat.color.withAlpha(opacity) as typeof ent.polygon.material;
+        ent.polygon!.material = mat.color.withAlpha(opacity / 100) as typeof ent.polygon.material;
       }
     }
     (viewer as { scene?: { requestRender: () => void } }).scene?.requestRender();

@@ -1,7 +1,8 @@
+import { useMemo } from 'react';
 import { useAPI } from '@nekazari/module-kit';
 import { parcelApiPath } from '../lib/normalizeParcelId';
 
-interface SoilSummary {
+export interface SoilSummary {
   horizons: Array<{
     depthFrom: number;
     depthTo: number;
@@ -32,7 +33,6 @@ export function useSoilApi() {
   const api = useAPI(SOIL_API_BASE);
 
   return {
-    // Expose raw get/post for consumers that need generic HTTP access
     get: api.get.bind(api),
     post: api.post.bind(api),
 
