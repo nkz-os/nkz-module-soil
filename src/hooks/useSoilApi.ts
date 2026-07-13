@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useAPI } from '@nekazari/module-kit';
 import { parcelApiPath } from '../lib/normalizeParcelId';
 
@@ -40,9 +41,10 @@ export interface SoilSummary {
 
 const SOIL_API_BASE = '/api/soil';
 
-export function useSoilApi() {
-  const api = useAPI(SOIL_API_BASE);
+type ApiClient = { get: <T = unknown>(path: string) => Promise<T>; post: <T = unknown>(path: string, body?: unknown) => Promise<T> };
 
+/** Pure builder — kept separate from the hook so it is unit-testable without a React render. */
+export function buildSoilApi(api: ApiClient) {
   return {
     get: api.get.bind(api),
     post: api.post.bind(api),
@@ -83,4 +85,13 @@ export function useSoilApi() {
         total_errors: number;
       }> }>('/metrics'),
   };
+}
+
+export function useSoilApi() {
+  const api = useAPI(SOIL_API_BASE);
+
+  // Memoize on the (stable) api client: consumers put this object in useEffect
+  // dependency arrays (ModulePage summary fetch), so a fresh object each render
+  // would loop renders/fetches forever.
+  return useMemo(() => buildSoilApi(api), [api]);
 }
