@@ -8,12 +8,18 @@ export type LayerStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error' | 'no
 
 export interface SoilLayerState {
   attribute: string;
+  visible: boolean;
+  opacity: number;
   scope: LayerScope;
+  status: LayerStatus;
 }
 
 let state: SoilLayerState = {
   attribute: 'usdaTextureClass',
+  visible: false,
+  opacity: 0.7,
   scope: 'selected',
+  status: 'idle',
 };
 
 const listeners = new Set<() => void>();

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useViewerOptional, useViewerLayer } from '@nekazari/sdk';
+import { useViewerOptional } from '@nekazari/sdk';
 import type { GeoJsonDataSource } from 'cesium';
 import { useSoilLayerContext } from '../../services/soilLayerContext';
 import { useSoilApi } from '../../hooks/useSoilApi';
@@ -35,10 +35,7 @@ export function SoilLayer() {
   const viewer = (viewerCtx as { cesiumViewer?: unknown })?.cesiumViewer;
   const selectedEntityId = (viewerCtx as { selectedEntityId?: string | null })?.selectedEntityId;
   const api = useSoilApi();
-  const { attribute, scope } = useSoilLayerContext();
-  // Visibility, opacity (0–100) and load status come from the host's unified
-  // Layers menu via the shared LayerRegistry.
-  const { visible, opacity, setStatus } = useViewerLayer('soil-raster');
+  const { attribute, visible, opacity, scope, setStatus } = useSoilLayerContext();
   const dsRef = useRef<GeoJsonDataSource | null>(null);
   const imageryRef = useRef<{ alpha?: number } | null>(null);
 
@@ -113,7 +110,7 @@ export function SoilLayer() {
           new Cesium.SingleTileImageryProvider({ url: data.url }),
         );
         if (layer) {
-          layer.alpha = opacity / 100;
+          layer.alpha = opacity;
           imageryRef.current = layer;
         }
         setStatus('ready');
@@ -129,7 +126,7 @@ export function SoilLayer() {
 
   useEffect(() => {
     if (imageryRef.current && isRaster) {
-      imageryRef.current.alpha = opacity / 100;
+      imageryRef.current.alpha = opacity;
     }
   }, [opacity, isRaster]);
 
@@ -179,7 +176,7 @@ export function SoilLayer() {
           const hex = soilLayerColor(attribute, raw ?? null);
           const polygon = ent.polygon as SoilPolygonGraphics | undefined;
           if (!polygon) continue;
-          polygon.material = Cesium.Color.fromCssColorString(hex).withAlpha(opacity / 100);
+          polygon.material = Cesium.Color.fromCssColorString(hex).withAlpha(opacity);
           polygon.outline = true;
           polygon.outlineColor = Cesium.Color.BLACK.withAlpha(0.45);
           polygon.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
@@ -210,7 +207,7 @@ export function SoilLayer() {
       const polygon = ent.polygon as SoilPolygonGraphics | undefined;
       const mat = polygon?.material as { color?: { withAlpha: (a: number) => unknown } } | undefined;
       if (polygon && mat?.color) {
-        polygon.material = mat.color.withAlpha(opacity / 100);
+        polygon.material = mat.color.withAlpha(opacity);
       }
     }
     (viewer as { scene?: { requestRender: () => void } }).scene?.requestRender();
