@@ -139,6 +139,17 @@ def _winner_source_per_attr(merged_attrs: dict, results: list[ProviderResult]) -
     return winners
 
 
+def _highest_priority_source(results: list[ProviderResult]) -> str | None:
+    """The overall winning provider for this ingest: whichever contributed
+    the highest-priority result. Distinct from per-attribute winners (a
+    single horizon can blend multiple providers) — this answers the
+    coarser "who mainly supplied this parcel's soil data" question that
+    `dataSource` in the API response represents."""
+    if not results:
+        return None
+    return max(results, key=lambda r: r.priority).source_tag
+
+
 def build_agri_soil_extended(
     parcel_id: str,
     location: dict,
@@ -160,6 +171,7 @@ def build_agri_soil_extended(
             observed_at=hw.get("observed_at"),
         ),
         parcelVersionId=TaggedProperty(value=parcel_version),
+        dataSource=_highest_priority_source(results),
     )
 
 

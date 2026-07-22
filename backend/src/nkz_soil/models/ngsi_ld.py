@@ -62,6 +62,7 @@ class AgriSoilExtended:
     hydrologicGroup: TaggedProperty | None = None
     parcelVersionId: TaggedProperty | None = None
     relativeCompaction: TaggedProperty | None = None
+    dataSource: str | None = None
     type: str = "AgriSoilExtended"
 
     def to_ngsi(self) -> dict:
@@ -80,6 +81,8 @@ class AgriSoilExtended:
             v: TaggedProperty | None = getattr(self, attr)
             if v is not None:
                 out[attr] = v.to_ngsi()
+        if self.dataSource:
+            out["dataSource"] = {"type": "Property", "value": self.dataSource}
         return out
 
 
