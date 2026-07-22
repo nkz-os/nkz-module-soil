@@ -184,6 +184,14 @@ class OrionClient:
     async def patch_entity(self, entity_id: str, attrs: dict[str, Any]) -> None:
         await self._sdk.update_entity_attrs(entity_id, attrs)
 
+    async def append_entity_attrs(self, entity_id: str, attrs: dict[str, Any]) -> None:
+        # Unlike patch_entity (PATCH /attrs, updates existing attrs only —
+        # a brand-new attribute silently lands in Orion's `notUpdated` and
+        # never persists), this adds new attributes AND updates existing
+        # ones (POST /attrs, overwrite=True). Use this for entity updates
+        # that may introduce a field the entity didn't have before.
+        await self._sdk.append_entity_attrs(entity_id, attrs, overwrite=True)
+
     async def delete_entity(self, entity_id: str) -> None:
         await self._sdk.delete_entity(entity_id)
 

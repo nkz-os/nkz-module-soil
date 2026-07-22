@@ -356,7 +356,11 @@ async def ingest_parcel(
         existing_match = [e for e in existing if e.get("id") == entity_id]
 
         if existing_match:
-            await orion.patch_entity(entity_id, {
+            # append_entity_attrs (POST /attrs), not patch_entity (PATCH
+            # /attrs) — PATCH only updates attributes the entity already
+            # has; a field introduced after the entity was first created
+            # (e.g. dataSource) would silently never persist on re-ingest.
+            await orion.append_entity_attrs(entity_id, {
                 k: v for k, v in entity.items()
                 if k not in ("id", "type", "@context")
             })
