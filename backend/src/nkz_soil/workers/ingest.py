@@ -158,6 +158,14 @@ def build_agri_soil_extended(
     parcel_version: str,
 ) -> AgriSoilExtended:
     """Build an AgriSoilExtended entity tagging horizons with winner-takes-provenance."""
+    # `_winner_source_per_attr({"horizons": True}, ...)` looks like it can never match
+    # when read in isolation (no provider emits an attribute literally named "horizons").
+    # In production it always matches: `legacy_as_provider_results` (built in
+    # ingest_parcel) synthesizes every legacy SoilDataResult as
+    # attributes={"horizons": True} precisely so this lookup succeeds and
+    # `winners["horizons"]` gets populated. It only looks dead-code-unreachable when
+    # this function is unit-tested in isolation with hand-built ProviderResult objects
+    # that use real attribute names (sand, clay, ph, ...) instead.
     winners = _winner_source_per_attr({"horizons": True}, results)
     hw = winners.get("horizons", {})
     return AgriSoilExtended(
@@ -173,6 +181,33 @@ def build_agri_soil_extended(
         parcelVersionId=TaggedProperty(value=parcel_version),
         dataSource=_highest_priority_source(results),
     )
+
+
+def _legacy_results_to_provider_results(all_results: list) -> list[ProviderResult]:
+    """Synthesize ProviderResult for provenance tracking from legacy SoilDataResult
+    providers, so the winner election has coverage. Each legacy result contributes
+    a horizons-keyed entry (see `build_agri_soil_extended`'s comment for why that
+    matters).
+
+    Priority is read from the result's own `.priority` attribute — already stamped
+    with the provider's real, correct priority (`ingest_parcel` sets
+    `result.priority = provider.priority` right after fetch/cache-read) — rather than
+    re-derived from `PROVIDER_PRIORITIES` by provider-name string. That dict's keys
+    don't match every registered provider's actual `.name`: `LucasProvider.name`
+    is `"LUCAS"` (dict has lowercase `"lucas"`), and `LucasTextureRasterProvider`
+    (`"LUCAS-Texture"`) / `EsdbRasterProvider` (`"ESDB-Raster"`) have no matching key
+    at all — all 3 would silently fall back to priority 0 via `.get(r.provider, 0)`.
+    """
+    return [
+        ProviderResult(
+            priority=r.priority,
+            attributes={"horizons": True},
+            source_tag=r.provider,
+            license=r.attribution or "unknown",
+        )
+        for r in all_results
+        if not isinstance(r, ProviderResult) and hasattr(r, "provider")
+    ]
 
 
 async def startup(ctx: dict) -> None:
@@ -277,17 +312,7 @@ async def ingest_parcel(
     ]
 
     # Synthesize ProviderResult for provenance tracking from legacy SoilDataResult providers.
-    # Each legacy result contributes a horizons-keyed entry so the winner election has coverage.
-    legacy_as_provider_results = [
-        ProviderResult(
-            priority=PROVIDER_PRIORITIES.get(r.provider, 0),
-            attributes={"horizons": True},
-            source_tag=r.provider,
-            license=r.attribution or "unknown",
-        )
-        for r in all_results
-        if not isinstance(r, ProviderResult) and hasattr(r, "provider")
-    ]
+    legacy_as_provider_results = _legacy_results_to_provider_results(all_results)
     all_provider_results = provider_results + legacy_as_provider_results
 
     entity = build_agri_soil_extended(
