@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useAPI } from '@nekazari/module-kit';
 import { parcelApiPath } from '../lib/normalizeParcelId';
+import { activateSoilForParcel } from '../services/moduleActivation';
 
 // Flat horizon shape as returned by GET /parcel/{id}/summary (already
 // unwrapped from NGSI-LD Property `{ type, value }` wrappers server-side —
@@ -72,8 +73,10 @@ export function buildSoilApi(api: ApiClient) {
     uploadCsv: (formData: FormData) =>
       api.post('/sampling-points/batch', formData),
 
-    forceIngest: (parcelId: string) =>
-      api.post(`/parcel/${parcelApiPath(parcelId)}/ingest`, {}),
+    // Routes through entity-manager's activation gate (records real
+    // quota usage) instead of calling soil's own /ingest endpoint
+    // directly — that direct call bypassed tenant_parcel_modules entirely.
+    forceIngest: (parcelId: string) => activateSoilForParcel(parcelId),
 
     getMetrics: () =>
       api.get<{ providers: Array<{

@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { buildSoilApi } from '../useSoilApi';
 
+vi.mock('../../services/moduleActivation', () => ({
+  activateSoilForParcel: vi.fn().mockResolvedValue({ message: 'ok', setup_status: 'ok' }),
+}));
+
+import { activateSoilForParcel } from '../../services/moduleActivation';
+
 function mockClient() {
   return { get: vi.fn(), post: vi.fn() };
 }
@@ -26,5 +32,12 @@ describe('buildSoilApi', () => {
     buildSoilApi(client).getSummary('urn:ngsi-ld:AgriParcel:x');
     expect(client.get).toHaveBeenCalledTimes(1);
     expect(String(client.get.mock.calls[0][0])).toContain('/summary');
+  });
+
+  it('forceIngest routes through the module activation gate, not a direct /ingest call', async () => {
+    const client = mockClient();
+    await buildSoilApi(client).forceIngest('urn:ngsi-ld:AgriParcel:abc');
+    expect(activateSoilForParcel).toHaveBeenCalledWith('urn:ngsi-ld:AgriParcel:abc');
+    expect(client.post).not.toHaveBeenCalled();
   });
 });
