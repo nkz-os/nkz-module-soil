@@ -30,7 +30,7 @@ async def test_setup_parcel_missing_secret_returns_403(with_secret):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/v1/soil/internal/setup-parcel",
-            json={"parcelId": "test123", "tenantId": "tenant1"},
+            json={"parcel_id": "test123", "tenant_id": "tenant1"},
         )
     assert resp.status_code == 403
     assert "Invalid internal service secret" in resp.text
@@ -42,7 +42,7 @@ async def test_setup_parcel_wrong_secret_returns_403(with_secret):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/v1/soil/internal/setup-parcel",
-            json={"parcelId": "test123", "tenantId": "tenant1"},
+            json={"parcel_id": "test123", "tenant_id": "tenant1"},
             headers={"X-Internal-Service-Secret": "wrong-secret"},
         )
     assert resp.status_code == 403
@@ -54,7 +54,7 @@ async def test_setup_parcel_missing_body_fields_returns_422(with_secret):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/v1/soil/internal/setup-parcel",
-            json={"parcelId": ""},
+            json={"parcel_id": ""},
             headers={"X-Internal-Service-Secret": "test-secret-123"},
         )
     assert resp.status_code == 422
@@ -75,8 +75,8 @@ async def test_setup_parcel_happy_path_with_geometry(with_secret):
             resp = await client.post(
                 "/v1/soil/internal/setup-parcel",
                 json={
-                    "parcelId": "test123",
-                    "tenantId": "tenant1",
+                    "parcel_id": "test123",
+                    "tenant_id": "tenant1",
                     "geometry": {"type": "Point", "coordinates": [-2.0, 42.0]},
                 },
                 headers={"X-Internal-Service-Secret": "test-secret-123"},

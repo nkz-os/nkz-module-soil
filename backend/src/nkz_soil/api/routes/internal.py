@@ -45,17 +45,17 @@ async def setup_parcel(request: Request):
     Idempotent: uses same dedup hash as the Orion webhook.
 
     Headers: X-Internal-Service-Secret (required)
-    Body: { parcelId, tenantId, geometry? }
+    Body: { parcel_id, tenant_id, geometry? }
     """
     _validate_internal_secret(request)
 
     body = await request.json()
-    parcel_id = body.get("parcelId", "").strip()
-    tenant_id = body.get("tenantId", "").strip()
+    parcel_id = (body.get("parcel_id") or "").strip()
+    tenant_id = (body.get("tenant_id") or "").strip()
     geometry = body.get("geometry") or {}
 
     if not parcel_id or not tenant_id:
-        raise HTTPException(status_code=422, detail="parcelId and tenantId are required")
+        raise HTTPException(status_code=422, detail="parcel_id and tenant_id are required")
 
     # If no geometry provided, resolve from Orion
     if not geometry:
