@@ -1,25 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
+import { useViewer } from '@nekazari/sdk';
 import { SlotShell } from '@nekazari/viewer-kit';
 import { useSoilApi } from '../hooks/useSoilApi';
 import { ModuleAttribution } from '../components/ModuleAttribution';
 import { PenetrometerForm } from '../components/PenetrometerForm';
 import { ngsiValue, soilHorizons } from '../lib/ngsiValue';
 
-export function SoilPanel({ entityId }: { entityId?: string }) {
+// The host's context-panel slot never passes flat props (only
+// additionalProps={{ entityData }}), so this reads the selection via
+// useViewer() directly instead — this component has no other caller.
+export function SoilPanel() {
   const { t } = useTranslation('soil');
   const api = useSoilApi();
+  const { selectedEntityId: entityId, selectedEntityType } = useViewer();
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
   const [selectedHorizon, setSelectedHorizon] = useState('0-30');
 
   useEffect(() => {
-    if (entityId) {
+    if (entityId && selectedEntityType === 'AgriParcel') {
       api.getSummary(entityId)
         .then((data: unknown) => setSummary(data as Record<string, unknown> | null))
         .catch(() => setSummary(null));
+    } else {
+      setSummary(null);
     }
-  }, [entityId, api]);
+  }, [entityId, selectedEntityType, api]);
+
+  if (selectedEntityType !== 'AgriParcel') return null;
 
   if (!summary) {
     return (
