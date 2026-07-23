@@ -1,11 +1,11 @@
 import { NKZClient } from '@nekazari/sdk';
 
 // Auth is handled via httpOnly cookie (NKZClient sends credentials: 'include').
-const getAuthToken = (): string | null => null;
+const getAuthToken = (): string | undefined => undefined;
 
-const getTenantId = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  return (window as any).__nekazariAuthContext?.tenantId ?? null;
+const getTenantId = (): string | undefined => {
+  if (typeof window === 'undefined') return undefined;
+  return (window as any).__nekazariAuthContext?.tenantId ?? undefined;
 };
 
 const getApiUrl = (): string => {
