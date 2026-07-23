@@ -1,5 +1,7 @@
 """Tests for the internal service-to-service endpoints."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -88,3 +90,64 @@ async def test_setup_parcel_happy_path_with_geometry(with_secret):
         redis_mock.enqueue_job.assert_awaited_once()
     finally:
         app.state.redis = None
+
+
+@pytest.mark.asyncio
+async def test_setup_parcel_resolves_geometry_from_orion_when_absent(with_secret):
+    """Regression: the fallback used q='id=="..."', which NGSI-LD's `q`
+    grammar doesn't support (id isn't a queryable attribute) — it always
+    returned zero results, so every real activation without an inline
+    geometry 404'd with "Cannot resolve geometry", even for parcels that
+    have one. Fixed by fetching the entity directly by id instead.
+    """
+    from unittest.mock import AsyncMock
+
+    redis_mock = AsyncMock()
+    redis_mock.enqueue_job = AsyncMock(return_value=None)
+    app.state.redis = redis_mock
+
+    mock_orion = AsyncMock()
+    mock_orion.__aenter__ = AsyncMock(return_value=mock_orion)
+    mock_orion.__aexit__ = AsyncMock(return_value=None)
+    mock_orion.get_entity = AsyncMock(
+        return_value={
+            "id": "urn:ngsi-ld:AgriParcel:test123",
+            "location": {
+                "type": "GeoProperty",
+                "value": {"type": "Point", "coordinates": [-2.0, 42.0]},
+            },
+        }
+    )
+
+    transport = ASGITransport(app=app)
+    try:
+        with patch("nkz_soil.api.routes.internal.OrionClient", return_value=mock_orion):
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/v1/soil/internal/setup-parcel",
+                    json={"parcel_id": "test123", "tenant_id": "tenant1"},
+                    headers={"X-Internal-Service-Secret": "test-secret-123"},
+                )
+        assert resp.status_code == 202
+        mock_orion.get_entity.assert_awaited_once_with("urn:ngsi-ld:AgriParcel:test123")
+        redis_mock.enqueue_job.assert_awaited_once()
+    finally:
+        app.state.redis = None
+
+
+@pytest.mark.asyncio
+async def test_setup_parcel_returns_404_when_entity_has_no_location(with_secret):
+    mock_orion = AsyncMock()
+    mock_orion.__aenter__ = AsyncMock(return_value=mock_orion)
+    mock_orion.__aexit__ = AsyncMock(return_value=None)
+    mock_orion.get_entity = AsyncMock(return_value=None)
+
+    transport = ASGITransport(app=app)
+    with patch("nkz_soil.api.routes.internal.OrionClient", return_value=mock_orion):
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/soil/internal/setup-parcel",
+                json={"parcel_id": "test123", "tenant_id": "tenant1"},
+                headers={"X-Internal-Service-Secret": "test-secret-123"},
+            )
+    assert resp.status_code == 404

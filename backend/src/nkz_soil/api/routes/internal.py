@@ -57,13 +57,14 @@ async def setup_parcel(request: Request):
     if not parcel_id or not tenant_id:
         raise HTTPException(status_code=422, detail="parcel_id and tenant_id are required")
 
-    # If no geometry provided, resolve from Orion
+    # If no geometry provided, resolve from Orion. `id` is not a queryable
+    # attribute in NGSI-LD's `q` grammar — a `q='id=="..."'` filter always
+    # returns zero results — so fetch the entity directly by id instead.
     if not geometry:
         async with OrionClient(tenant_id) as orion:
-            q = f'id=="{_parcel_urn(parcel_id)}"'
-            parcels = await orion.query_entities(type="AgriParcel", q=q, limit=1)
-            if parcels:
-                geometry = parcels[0].get("location", {}).get("value", {})
+            entity = await orion.get_entity(_parcel_urn(parcel_id))
+            if entity:
+                geometry = entity.get("location", {}).get("value", {})
         if not geometry:
             raise HTTPException(
                 status_code=404,

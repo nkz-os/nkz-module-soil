@@ -195,6 +195,15 @@ class OrionClient:
     async def delete_entity(self, entity_id: str) -> None:
         await self._sdk.delete_entity(entity_id)
 
+    async def get_entity(self, entity_id: str) -> dict[str, Any] | None:
+        """Fetch a single entity by id. Returns None if not found (404)."""
+        try:
+            return await self._sdk.get_entity(entity_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return None
+            raise
+
     async def get_subscription(self, subscription_id: str) -> dict[str, Any]:
         resp = await self._sdk._client.get(
             self._sdk._url(f"/ngsi-ld/v1/subscriptions/{subscription_id}"),
