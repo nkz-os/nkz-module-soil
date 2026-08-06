@@ -1,11 +1,11 @@
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
+from nkz_platform_sdk import AuthContext
 from pydantic import BaseModel
 
-from nkz_platform_sdk import AuthContext
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.api.limiter import limiter
 from nkz_soil.config import CONTEXT_URL, INGESTION_BUFFER_M, ORION_WEBHOOK_SECRET, SOIL_INGEST_TTL
@@ -14,6 +14,7 @@ from nkz_soil.storage.orion import OrionClient
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_REQUIRE_AUTH_ADMIN = require_auth(roles=["GestorAgricola", "Administrador"])
 
 SUBSCRIPTION_ID = "urn:ngsi-ld:Subscription:soil-parcel-ingest"
 
@@ -58,7 +59,7 @@ async def _is_already_processed(redis, parcel_hash: str) -> bool:
 
 async def _mark_processed(redis, parcel_hash: str) -> None:
     key = f"soil:ingested:{parcel_hash}"
-    await redis.set(key, datetime.now(timezone.utc).isoformat(), ex=SOIL_INGEST_TTL)
+    await redis.set(key, datetime.now(UTC).isoformat(), ex=SOIL_INGEST_TTL)
 
 
 def _expand_geometry(geometry: dict, buffer_m: float) -> dict:
@@ -166,7 +167,7 @@ async def orion_webhook(request: Request):
 
 
 @router.post("/subscriptions/register")
-async def register_subscription(auth: AuthContext = require_auth(roles=["GestorAgricola", "Administrador"])):
+async def register_subscription(auth: AuthContext = _REQUIRE_AUTH_ADMIN):
     subscription = {
         "id": SUBSCRIPTION_ID,
         "type": "Subscription",
@@ -187,7 +188,7 @@ async def register_subscription(auth: AuthContext = require_auth(roles=["GestorA
         try:
             await orion.create_entity(subscription)
             return {"status": "registered", "subscriptionId": SUBSCRIPTION_ID}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — Orion may raise various errors; narrow if OrionClient propagates typed exceptions
             if "already exists" in str(e).lower():
                 return {"status": "already_registered", "subscriptionId": SUBSCRIPTION_ID}
             raise HTTPException(status_code=500, detail=str(e))
@@ -195,10 +196,10 @@ async def register_subscription(auth: AuthContext = require_auth(roles=["GestorA
 
 @router.get("/subscriptions/status")
 @limiter.exempt
-async def subscription_status(auth: AuthContext = require_auth(roles=["GestorAgricola", "Administrador"])):
+async def subscription_status(auth: AuthContext = _REQUIRE_AUTH_ADMIN):
     async with OrionClient(auth.tenant_id) as orion:
         try:
             entity = await orion.get_subscription(SUBSCRIPTION_ID)
             return {"status": "active", "subscription": entity}
-        except Exception:
+        except Exception:  # noqa: BLE001 — subscription may not exist; return not_found gracefully
             return {"status": "not_found", "subscriptionId": SUBSCRIPTION_ID}

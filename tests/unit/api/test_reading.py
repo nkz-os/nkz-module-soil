@@ -1,8 +1,7 @@
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
-
 from nkz_soil.api.main import create_app
 
 
@@ -20,9 +19,11 @@ def mock_orion():
     mock.__aexit__ = AsyncMock(return_value=None)
     mock.query_entities = AsyncMock(return_value=[])
     mock.create_entity = AsyncMock()
-    with patch("nkz_soil.api.routes.reading.OrionClient", return_value=mock):
-        with patch("nkz_soil.api.routes.writing.OrionClient", return_value=mock):
-            yield mock
+    with (
+        patch("nkz_soil.api.routes.reading.OrionClient", return_value=mock),
+        patch("nkz_soil.api.routes.writing.OrionClient", return_value=mock),
+    ):
+        yield mock
 
 
 def test_health(client):

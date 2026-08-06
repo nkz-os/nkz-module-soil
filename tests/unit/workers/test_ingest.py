@@ -1,16 +1,16 @@
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from nkz_soil.workers.ingest import (
-    _cascade_merge,
-    _apply_pedotransfer,
-    _aggregate_uncertainty,
-    _primary_source,
-    _horizon_to_dict,
-    EnrichedHorizon,
-    STANDARD_DEPTHS,
-)
+import pytest
 from nkz_soil.models.domain import Horizon, SoilDataResult
+from nkz_soil.workers.ingest import (
+    STANDARD_DEPTHS,
+    EnrichedHorizon,
+    _aggregate_uncertainty,
+    _apply_pedotransfer,
+    _cascade_merge,
+    _horizon_to_dict,
+    _primary_source,
+)
 
 
 def make_result(provider, horizons, uncertainty=0.1, priority=0):
@@ -127,6 +127,7 @@ async def test_ingest_parcel_creates_entity():
     mock_orion.__aenter__ = AsyncMock(return_value=mock_orion)
     mock_orion.__aexit__ = AsyncMock(return_value=None)
     mock_orion.create_entity = AsyncMock()
+    mock_orion.get_entity = AsyncMock(return_value=None)  # not found → create path
 
     mock_cb = AsyncMock()
     mock_cb.is_open = AsyncMock(return_value=False)
@@ -173,7 +174,7 @@ async def test_ingest_parcel_links_real_parcel_urn():
     mock_orion.__aenter__ = AsyncMock(return_value=mock_orion)
     mock_orion.__aexit__ = AsyncMock(return_value=None)
     mock_orion.create_entity = AsyncMock()
-    mock_orion.query_entities = AsyncMock(return_value=[])
+    mock_orion.get_entity = AsyncMock(return_value=None)  # not found → create path
 
     mock_cb = AsyncMock()
     mock_cb.is_open = AsyncMock(return_value=False)
@@ -227,7 +228,7 @@ async def test_ingest_parcel_updates_via_append_not_patch():
     mock_orion.create_entity = AsyncMock()
     mock_orion.patch_entity = AsyncMock()
     mock_orion.append_entity_attrs = AsyncMock()
-    mock_orion.query_entities = AsyncMock(return_value=[{"id": entity_id}])
+    mock_orion.get_entity = AsyncMock(return_value={"id": entity_id})  # entity exists → append path
 
     mock_cb = AsyncMock()
     mock_cb.is_open = AsyncMock(return_value=False)

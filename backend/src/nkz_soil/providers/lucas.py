@@ -6,7 +6,7 @@ NEVER returned to consumers — only aggregated values per query location.
 """
 from __future__ import annotations
 
-from nkz_soil.models.domain import SoilDataResult, Horizon
+from nkz_soil.models.domain import Horizon, SoilDataResult
 from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.storage.pg import get_pool
 

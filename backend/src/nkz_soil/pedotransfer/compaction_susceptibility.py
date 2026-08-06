@@ -91,10 +91,13 @@ def compaction_susceptibility_score(
 
     # ── Elevated bulk density flag (indicative — NOT diagnostic) ──
     elevated_bd = False
-    if bulk_density is not None and bulk_density_ref is not None:
-        if bulk_density > bulk_density_ref * 1.05:
-            elevated_bd = True
-            modifiers.append("indicative_elevated_bd")
+    if (
+        bulk_density is not None
+        and bulk_density_ref is not None
+        and bulk_density > bulk_density_ref * 1.05
+    ):
+        elevated_bd = True
+        modifiers.append("indicative_elevated_bd")
 
     return {
         "score": score_int,

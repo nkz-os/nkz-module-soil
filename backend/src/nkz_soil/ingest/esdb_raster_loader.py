@@ -4,12 +4,15 @@ ESDB rasters arrive as GeoTIFF files in the `nekazari-soil-raw/esdb/` bucket pre
 File naming convention: <variable>_<depth>.tif (e.g. CLAY_TOP.tif, OC_SUB.tif).
 """
 from __future__ import annotations
+
 import os
 import re
 from pathlib import PurePosixPath
+
 import boto3
 from rasterio.io import MemoryFile
 from rasterio.warp import transform_bounds
+
 from nkz_soil.storage.pg import get_pool
 
 _TARGET_CRS = "EPSG:4326"
@@ -81,7 +84,7 @@ async def catalog_esdb_rasters(
                                               densify_pts=21)
                 wkt = _bbox_wkt(w, s, e, n)
                 crs = src_crs
-                res = int(round(abs(ds.transform[0])))
+                res = round(abs(ds.transform[0]))
 
             async with pool.acquire() as conn:
                 await conn.execute(

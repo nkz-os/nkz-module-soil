@@ -1,9 +1,9 @@
 """Tests for kriging interpolation."""
 
-import numpy as np
-import pytest
 from unittest.mock import patch
 
+import numpy as np
+import pytest
 from nkz_soil.interpolation.kriging import kriging_interpolate
 
 
@@ -34,6 +34,7 @@ def test_kriging_returns_none_on_import_error():
         try:
             # Re-import to trigger the ImportError path
             import importlib
+
             import nkz_soil.interpolation.kriging as kg
             importlib.reload(kg)
 

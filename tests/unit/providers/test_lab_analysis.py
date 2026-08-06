@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+from nkz_soil.models.domain import DepthInterval, SoilProperty
 from nkz_soil.providers.lab_analysis import LabAnalysisProvider
-from nkz_soil.models.domain import SoilProperty, DepthInterval
 
 
 @pytest.fixture

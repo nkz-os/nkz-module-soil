@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from nkz_soil.interpolation.idw import idw_interpolate
 
 

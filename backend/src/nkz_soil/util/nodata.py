@@ -12,7 +12,7 @@ _NUMERIC_HORIZON_KEYS = frozenset({
 })
 
 
-def is_soilgrids_nodata(value: float | int | None) -> bool:
+def is_soilgrids_nodata(value: float | None) -> bool:
     if value is None:
         return False
     try:
@@ -22,7 +22,7 @@ def is_soilgrids_nodata(value: float | int | None) -> bool:
     return any(abs(fv - sentinel) < 1e-6 for sentinel in SOILGRIDS_NODATA)
 
 
-def clean_nodata_value(value: float | int | None) -> float | int | None:
+def clean_nodata_value(value: float | None) -> float | int | None:
     return None if is_soilgrids_nodata(value) else value
 
 

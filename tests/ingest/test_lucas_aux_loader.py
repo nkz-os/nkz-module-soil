@@ -1,14 +1,16 @@
 """Aux loaders insert expected rows + are idempotent."""
 from __future__ import annotations
-from pathlib import Path
-import asyncpg
-import os
 
-from nkz_soil.ingest.lucas_loader import load_lucas_topsoil
+import os
+from pathlib import Path
+
+import asyncpg
 from nkz_soil.ingest.lucas_aux_loader import (
-    load_lucas_bulk_density, load_lucas_erosion,
+    load_lucas_bulk_density,
+    load_lucas_erosion,
     load_lucas_organic,
 )
+from nkz_soil.ingest.lucas_loader import load_lucas_topsoil
 from nkz_soil.storage import pg as pg_module
 
 from .conftest import _run

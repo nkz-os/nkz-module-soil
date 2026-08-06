@@ -1,8 +1,8 @@
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from nkz_soil.models.domain import DepthInterval, SoilProperty
 from nkz_soil.providers.lab_analysis import LabAnalysisProvider
 from nkz_soil.storage import orion as O
-from nkz_soil.models.domain import SoilProperty, DepthInterval
 
 from .conftest import _run
 

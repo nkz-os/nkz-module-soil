@@ -1,5 +1,6 @@
 """ProviderResult must carry source_tag, license, entitlement, confidence."""
 from __future__ import annotations
+
 from nkz_soil.providers.base import ProviderResult
 
 

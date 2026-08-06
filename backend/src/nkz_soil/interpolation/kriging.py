@@ -75,6 +75,6 @@ def kriging_interpolate(
 
         return z.reshape(gx.shape)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — kriging may raise various errors from numeric libs; fallback to IDW
         logger.warning("Kriging failed (%s), caller should fall back to IDW", e)
         return None

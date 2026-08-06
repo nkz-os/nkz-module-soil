@@ -3,8 +3,11 @@
 Idempotent: ON CONFLICT (point_id) DO UPDATE.
 """
 from __future__ import annotations
+
 from pathlib import Path
+
 import pandas as pd
+
 from nkz_soil.storage.pg import get_pool
 
 # Mapping LUCAS CSV column → DB column.
@@ -55,8 +58,7 @@ async def load_lucas_topsoil(csv_path: Path) -> int:
     df = pd.read_csv(csv_path)
     pool = await get_pool()
     n = 0
-    async with pool.acquire() as conn:
-        async with conn.transaction():
+    async with pool.acquire() as conn, conn.transaction():
             for _, row in df.iterrows():
                 await conn.execute(
                     _UPSERT_SQL,

@@ -1,4 +1,4 @@
-from nkz_soil.ingest.lucas_texture_loader import _variable_for, _bbox_wkt
+from nkz_soil.ingest.lucas_texture_loader import _bbox_wkt, _variable_for
 
 
 def test_variable_for_eu23_filenames():

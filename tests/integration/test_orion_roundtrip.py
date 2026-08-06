@@ -58,7 +58,7 @@ def cleanup_entities(tenant_id):
             for entity_id in created_ids:
                 try:
                     await orion.delete_entity(entity_id)
-                except Exception:
+                except Exception:  # noqa: BLE001, S110 — cleanup is best-effort; ignore failures
                     pass
 
     asyncio.run(_cleanup())

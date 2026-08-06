@@ -1,18 +1,19 @@
 from fastapi import APIRouter, HTTPException, Query
-
 from nkz_platform_sdk import AuthContext
+
 from nkz_soil.api.dependencies import require_auth
 from nkz_soil.api.limiter import limiter
-from nkz_soil.config import SOIL_DEFAULT_CONTRACTED_HA
 from nkz_soil.api.routes import providers as provider_routes
+from nkz_soil.config import SOIL_DEFAULT_CONTRACTED_HA
 from nkz_soil.models.domain import DepthInterval
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
-from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
+from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 from nkz_soil.util.nodata import sanitize_horizons
 
 router = APIRouter()
+_REQUIRE_AUTH = require_auth()
 
 
 async def _first_agri_soil(orion: OrionClient, parcel_id: str) -> dict:
@@ -35,7 +36,7 @@ def _prop_value(entity: dict, key: str, default=None):
 
 @router.get("/parcel/{parcel_id}/summary")
 @limiter.exempt
-async def parcel_summary(parcel_id: str, auth: AuthContext = require_auth()):
+async def parcel_summary(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH):
     async with OrionClient(auth.tenant_id) as orion:
         entity = await _first_agri_soil(orion, parcel_id)
         return {
@@ -49,7 +50,7 @@ async def parcel_summary(parcel_id: str, auth: AuthContext = require_auth()):
 @router.get("/parcel/{parcel_id}/horizons")
 @limiter.exempt
 async def parcel_horizons(
-    parcel_id: str, depth: str = "0-30", auth: AuthContext = require_auth()
+    parcel_id: str, depth: str = "0-30", auth: AuthContext = _REQUIRE_AUTH
 ):
     depth_from, depth_to = map(int, depth.split("-"))
     async with OrionClient(auth.tenant_id) as orion:
@@ -69,7 +70,7 @@ async def parcel_raster(
     parcel_id: str,
     property: str,
     depth: str = "0-30",
-    auth: AuthContext = require_auth(),
+    auth: AuthContext = _REQUIRE_AUTH,
 ):
     async with OrionClient(auth.tenant_id) as orion:
         depth_from, depth_to = map(int, depth.split("-"))
@@ -101,7 +102,7 @@ async def parcel_raster(
 @router.get("/parcel/{parcel_id}/hydrologic-group")
 @limiter.exempt
 async def parcel_hydrologic_group(
-    parcel_id: str, auth: AuthContext = require_auth()
+    parcel_id: str, auth: AuthContext = _REQUIRE_AUTH
 ):
     async with OrionClient(auth.tenant_id) as orion:
         entity = await _first_agri_soil(orion, parcel_id)
@@ -115,7 +116,7 @@ async def parcel_hydrologic_group(
 @router.get("/point")
 @limiter.exempt
 async def point_query(
-    lat: float, lon: float, depth: str = "0-30", auth: AuthContext = require_auth()
+    lat: float, lon: float, depth: str = "0-30", auth: AuthContext = _REQUIRE_AUTH
 ):
     depth_from, depth_to = map(int, depth.split("-"))
     geometry = {"type": "Point", "coordinates": [lon, lat]}
@@ -139,7 +140,7 @@ async def point_query(
 @limiter.exempt
 async def penetrometer_readings(
     parcel_id: str,
-    auth: AuthContext = require_auth(),
+    auth: AuthContext = _REQUIRE_AUTH,
 ):
     """Return SoilSamplingPoint entities with penetrationResistance for a parcel."""
     async with OrionClient(auth.tenant_id) as orion:
@@ -184,11 +185,11 @@ async def penetrometer_readings(
 
 @router.get("/tenant/quota")
 @limiter.exempt
-async def tenant_quota(auth: AuthContext = require_auth()):
+async def tenant_quota(auth: AuthContext = _REQUIRE_AUTH):
     """Calculate evaluated hectares from AgriSoil entities in Orion-LD."""
+    import pyproj
     from shapely.geometry import shape
     from shapely.ops import transform
-    import pyproj
 
     async with OrionClient(auth.tenant_id) as orion:
         entities = await orion.query_entities(type="AgriSoilExtended")
@@ -206,7 +207,7 @@ async def tenant_quota(auth: AuthContext = require_auth()):
                 geom,
             )
             total_area_m2 += geom_proj.area
-        except Exception:
+        except Exception:  # noqa: BLE001, S112 — skip geometry that cannot be projected
             continue
 
     evaluated_ha = round(total_area_m2 / 10_000, 2)
@@ -250,7 +251,7 @@ async def point_texture(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
     depth: str = Query(_DEFAULT_DEPTH, pattern=r"^\d+-\d+$"),
-    auth: AuthContext = require_auth(),
+    auth: AuthContext = _REQUIRE_AUTH,
 ):
     """Resolve soil texture on-the-fly for any geographic point.
 
@@ -295,7 +296,7 @@ async def point_texture(
                 h = result.horizons[0]
                 if h.sand is not None or h.clay is not None or h.silt is not None:
                     break
-        except Exception:
+        except Exception:  # noqa: BLE001, S112 — fallback to next provider on any error
             continue
 
     if not result or not result.horizons:
@@ -355,7 +356,7 @@ async def point_texture(
 @router.get("/parcel/{parcel_id}/compaction-susceptibility")
 @limiter.exempt
 async def parcel_compaction_susceptibility(
-    parcel_id: str, auth: AuthContext = require_auth()
+    parcel_id: str, auth: AuthContext = _REQUIRE_AUTH
 ):
     """Return compaction susceptibility for a parcel from its AgriSoil entity.
 

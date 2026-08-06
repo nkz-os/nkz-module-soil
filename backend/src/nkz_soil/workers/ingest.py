@@ -8,12 +8,11 @@ from arq.connections import RedisSettings
 from arq.cron import CronJob
 
 from nkz_soil.config import REDIS_URL
-from nkz_soil.workers.water_budget import compute_water_budgets
 from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
-from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.compaction_susceptibility import compaction_susceptibility_score
+from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
@@ -31,6 +30,7 @@ from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.metrics import metrics
 from nkz_soil.providers.soilgrids import SoilGridsProvider
 from nkz_soil.storage.orion import OrionClient
+from nkz_soil.workers.water_budget import compute_water_budgets
 
 _PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
 
@@ -292,7 +292,7 @@ async def ingest_parcel(
             await cache.set(provider.name, geometry, ALL_PROPERTIES, STANDARD_DEPTHS, result)
             await circuit_breaker.record_success(provider.name)
             metrics.record_fetch(provider.name, duration_ms, from_cache=False)
-        except Exception:
+        except Exception:  # noqa: BLE001 — provider fetch may raise any error; circuit breaker handles it
             await circuit_breaker.record_failure(provider.name)
             metrics.record_error(provider.name)
             continue
@@ -352,10 +352,9 @@ async def ingest_parcel(
 
     entity_id = entity["id"]
     async with OrionClient(tenant_id) as orion:
-        existing = await orion.query_entities(type="AgriSoilExtended")
-        existing_match = [e for e in existing if e.get("id") == entity_id]
+        existing = await orion.get_entity(entity_id)
 
-        if existing_match:
+        if existing is not None:
             # append_entity_attrs (POST /attrs), not patch_entity (PATCH
             # /attrs) — PATCH only updates attributes the entity already
             # has; a field introduced after the entity was first created
@@ -444,8 +443,8 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
                 and h.clay is not None
             ):
                 from nkz_soil.pedotransfer.relative_compaction import (
-                    textural_class,
                     REFERENCE_BULK_DENSITY,
+                    textural_class,
                 )
                 tex = textural_class(h.sand, h.silt, h.clay)
                 bd_ref = REFERENCE_BULK_DENSITY.get(tex)
@@ -533,8 +532,9 @@ def _aggregate_uncertainty(results: list) -> float:
 
 async def backfill_parcels_without_soil(ctx: dict) -> None:
     """Cada 6h: detecta parcelas sin AgriSoilExtended y las ingiere."""
-    import asyncpg
     import logging
+
+    import asyncpg
     from arq.connections import ArqRedis
 
     logger = logging.getLogger(__name__)
@@ -554,7 +554,7 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
             )
             await conn.close()
             tenants = [r["tenant_id"] for r in rows]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — DB connection may fail for many reasons; fallback to env
             logger.warning("Backfill soil: DB query failed (%s), falling back to env", e)
 
     if not tenants:
@@ -573,8 +573,8 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
                     parcels = await orion.query_entities(type="AgriParcel")
                     if parcels:
                         tenants.append(guess)
-            except Exception:
-                pass
+            except Exception:  # noqa: BLE001 — tenant guess may fail; skip and try next
+                logger.debug("Backfill soil: tenant guess %s failed, trying next", guess)
         logger.info("Backfill soil: discovered tenants from Orion: %s", tenants)
     logger.info("Backfill soil: %d tenants with soil module enabled", len(tenants))
 
@@ -618,7 +618,7 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
                 )
             total_enqueued += enqueued
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — tenant processing may fail for various reasons; log and continue
             logger.error("Backfill soil: error processing %s (%s)", tenant_id, e)
 
     logger.info("Backfill soil: done — %d total parcels enqueued", total_enqueued)
@@ -635,6 +635,7 @@ async def reap_stuck_jobs(ctx: dict) -> None:
     failed so they don't block the queue indefinitely.
     """
     import logging
+
     from arq.connections import ArqRedis
 
     logger = logging.getLogger(__name__)
@@ -714,8 +715,8 @@ def _parse_redis_url(url: str) -> RedisSettings:
 
 
 class WorkerSettings:
-    functions = [ingest_parcel, compute_water_budgets, backfill_parcels_without_soil]
-    cron_jobs = [
+    functions: list = [ingest_parcel, compute_water_budgets, backfill_parcels_without_soil]  # noqa: RUF012
+    cron_jobs: list = [  # noqa: RUF012
         CronJob(
             name="backfill_soil",
             coroutine=backfill_parcels_without_soil,

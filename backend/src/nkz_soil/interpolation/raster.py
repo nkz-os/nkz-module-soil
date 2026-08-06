@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import numpy as np
 
@@ -102,7 +102,7 @@ async def generate_raster(
     layer_id = f"soil-{property_name.lower().replace('saturated', '')}"
     key = f"{parcel_id}/v1/{layer_id}-{depth_from}-{depth_to}.tif"
 
-    from nkz_soil.storage.minio import get_minio_client, generate_presigned_url
+    from nkz_soil.storage.minio import generate_presigned_url, get_minio_client
 
     s3 = get_minio_client()
     upload_cog(s3, bucket, key, cog_bytes)
@@ -125,7 +125,7 @@ async def generate_raster(
         "format": {"type": "Property", "value": "COG"},
         "crs": {"type": "Property", "value": "EPSG:4326"},
         "resolution": {"type": "Property", "value": resolution_m},
-        "generatedAt": {"type": "Property", "value": datetime.now(timezone.utc).isoformat()},
+        "generatedAt": {"type": "Property", "value": datetime.now(UTC).isoformat()},
         "uncertainty": {"type": "Property", "value": _estimate_uncertainty(method, len(coords))},
         "parcelVersionId": {"type": "Property", "value": "v1"},
     }
@@ -154,9 +154,9 @@ def _array_to_cog(
     Uses rasterio if available, falls back to a minimal TIFF header.
     """
     import rasterio
-    from rasterio.transform import from_origin
     from rasterio.crs import CRS
     from rasterio.enums import Resampling
+    from rasterio.transform import from_origin
 
     n_rows, n_cols = data.shape
     transform = from_origin(min_x, max_y, resolution, resolution)

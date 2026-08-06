@@ -1,4 +1,4 @@
-from nkz_soil.models.domain import SoilDataResult, Horizon
+from nkz_soil.models.domain import Horizon, SoilDataResult
 
 
 def test_result_carries_license_priority_redistributable():

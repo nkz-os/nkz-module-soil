@@ -43,7 +43,7 @@ class SoilModuleLifecycle:
                     logger.error(
                         "Bucket creation failed after %d attempts: %s", max_retries, e
                     )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — S3 bucket creation may fail for various reasons; retry or fail gracefully
                 logger.error("Unexpected error creating bucket %s: %s", bucket_name, e)
                 if attempt < max_retries - 1:
                     wait = 2 ** attempt

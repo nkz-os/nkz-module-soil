@@ -8,6 +8,7 @@ Values are PARCEL-AGGREGATED (mean over interior sample points), never a single
 arbitrary-point read, to avoid raster reconstruction by sampling.
 """
 from __future__ import annotations
+
 import os
 from urllib.parse import urlparse
 
@@ -16,7 +17,7 @@ from rasterio.io import MemoryFile
 from rasterio.warp import transform as warp_transform
 from shapely.geometry import Point, shape
 
-from nkz_soil.models.domain import SoilDataResult, Horizon
+from nkz_soil.models.domain import Horizon, SoilDataResult
 from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.storage.pg import get_pool
 

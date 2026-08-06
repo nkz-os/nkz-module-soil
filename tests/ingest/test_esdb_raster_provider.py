@@ -1,10 +1,10 @@
 """ESDB-raster provider samples a COG at a query point, returning SoilDataResult."""
 from __future__ import annotations
-import pytest
 
+import pytest
 from nkz_soil.ingest.esdb_raster_loader import catalog_esdb_rasters
+from nkz_soil.models.domain import DepthInterval, SoilProperty
 from nkz_soil.providers.esdb_raster import EsdbRasterProvider
-from nkz_soil.models.domain import SoilProperty, DepthInterval
 from nkz_soil.storage import pg as pg_module
 
 from .conftest import _run

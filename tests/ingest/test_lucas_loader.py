@@ -1,8 +1,9 @@
 """Loader: idempotent bulk import of LUCAS topsoil CSV into PostGIS."""
 from __future__ import annotations
-from pathlib import Path
-import asyncpg
 
+from pathlib import Path
+
+import asyncpg
 from nkz_soil.ingest.lucas_loader import load_lucas_topsoil
 from nkz_soil.storage import pg as pg_module
 

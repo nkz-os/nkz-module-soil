@@ -1,12 +1,12 @@
-from datetime import timedelta, datetime
+from datetime import UTC, datetime, timedelta
 
 from nkz_soil.models.domain import (
-    SoilProperty,
     DepthInterval,
-    SoilDataResult,
-    ProviderHealth,
     GeographicScope,
     Horizon,
+    ProviderHealth,
+    SoilDataResult,
+    SoilProperty,
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.storage.orion import OrionClient, current_tenant
@@ -69,7 +69,7 @@ class LabAnalysisProvider:
             name=self.name,
             status="ok",
             latency_ms=0,
-            last_success=datetime.now(),
+            last_success=datetime.now(tz=UTC),
             error_count=0,
             cache_hit_rate=0.0,
         )

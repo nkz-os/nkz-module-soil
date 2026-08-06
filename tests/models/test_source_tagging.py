@@ -1,6 +1,7 @@
 """AgriSoilExtended Property must carry providedBy/license/observedAt sub-properties."""
 from __future__ import annotations
-from nkz_soil.models.ngsi_ld import AgriSoilExtended, TaggedProperty, GeoProperty, Relationship
+
+from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 
 
 def test_tagged_property_serializes_with_provenance():
