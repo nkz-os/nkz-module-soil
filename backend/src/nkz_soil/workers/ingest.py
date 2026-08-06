@@ -352,10 +352,9 @@ async def ingest_parcel(
 
     entity_id = entity["id"]
     async with OrionClient(tenant_id) as orion:
-        existing = await orion.query_entities(type="AgriSoilExtended")
-        existing_match = [e for e in existing if e.get("id") == entity_id]
+        existing = await orion.get_entity(entity_id)
 
-        if existing_match:
+        if existing is not None:
             # append_entity_attrs (POST /attrs), not patch_entity (PATCH
             # /attrs) — PATCH only updates attributes the entity already
             # has; a field introduced after the entity was first created
