@@ -127,6 +127,7 @@ async def test_ingest_parcel_creates_entity():
     mock_orion.__aenter__ = AsyncMock(return_value=mock_orion)
     mock_orion.__aexit__ = AsyncMock(return_value=None)
     mock_orion.create_entity = AsyncMock()
+    mock_orion.get_entity = AsyncMock(return_value=None)  # not found → create path
 
     mock_cb = AsyncMock()
     mock_cb.is_open = AsyncMock(return_value=False)
@@ -173,7 +174,7 @@ async def test_ingest_parcel_links_real_parcel_urn():
     mock_orion.__aenter__ = AsyncMock(return_value=mock_orion)
     mock_orion.__aexit__ = AsyncMock(return_value=None)
     mock_orion.create_entity = AsyncMock()
-    mock_orion.query_entities = AsyncMock(return_value=[])
+    mock_orion.get_entity = AsyncMock(return_value=None)  # not found → create path
 
     mock_cb = AsyncMock()
     mock_cb.is_open = AsyncMock(return_value=False)
@@ -227,7 +228,7 @@ async def test_ingest_parcel_updates_via_append_not_patch():
     mock_orion.create_entity = AsyncMock()
     mock_orion.patch_entity = AsyncMock()
     mock_orion.append_entity_attrs = AsyncMock()
-    mock_orion.query_entities = AsyncMock(return_value=[{"id": entity_id}])
+    mock_orion.get_entity = AsyncMock(return_value={"id": entity_id})  # entity exists → append path
 
     mock_cb = AsyncMock()
     mock_cb.is_open = AsyncMock(return_value=False)
