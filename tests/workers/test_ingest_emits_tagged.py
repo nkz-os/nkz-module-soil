@@ -1,7 +1,8 @@
 """Ingest worker emits AgriSoilExtended with per-attribute source-tagging."""
 from __future__ import annotations
-from nkz_soil.workers.ingest import build_agri_soil_extended
+
 from nkz_soil.providers.base import ProviderResult
+from nkz_soil.workers.ingest import build_agri_soil_extended
 
 
 def test_horizons_provenance_from_highest_priority_supplier():

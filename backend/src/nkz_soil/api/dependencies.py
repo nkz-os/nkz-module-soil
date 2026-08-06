@@ -25,4 +25,4 @@ def get_redis_pool(request: Request):
     return redis
 
 
-__all__ = ["AuthContext", "require_auth", "gateway_auth_headers", "get_redis_pool"]
+__all__ = ["AuthContext", "gateway_auth_headers", "get_redis_pool", "require_auth"]

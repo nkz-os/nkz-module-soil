@@ -1,16 +1,16 @@
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from nkz_soil.workers.ingest import (
-    _cascade_merge,
-    _apply_pedotransfer,
-    _aggregate_uncertainty,
-    _primary_source,
-    _horizon_to_dict,
-    EnrichedHorizon,
-    STANDARD_DEPTHS,
-)
+import pytest
 from nkz_soil.models.domain import Horizon, SoilDataResult
+from nkz_soil.workers.ingest import (
+    STANDARD_DEPTHS,
+    EnrichedHorizon,
+    _aggregate_uncertainty,
+    _apply_pedotransfer,
+    _cascade_merge,
+    _horizon_to_dict,
+    _primary_source,
+)
 
 
 def make_result(provider, horizons, uncertainty=0.1, priority=0):

@@ -171,7 +171,7 @@ class OrionClient:
                     eid = out.get("id") or entity.get("id", "")
                     if eid:
                         created_ids.append(eid)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 — Orion may reject entities for various reasons; collect and report
                     errors.append({"id": entity.get("id", ""), "error": str(exc)})
 
         await asyncio.gather(*[_one(e) for e in entities])

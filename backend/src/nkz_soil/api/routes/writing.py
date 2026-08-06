@@ -2,15 +2,17 @@ import csv
 import io
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from nkz_platform_sdk import AuthContext
 from pydantic import BaseModel
 
-from nkz_platform_sdk import AuthContext
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.config import BATCH_MAX_BYTES, BATCH_MAX_ROWS, CONTEXT_URL
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 
 router = APIRouter()
+_REQUIRE_AUTH = require_auth()
+_FILE_UPLOAD = File(...)
 
 
 _PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
@@ -50,7 +52,7 @@ class SurveyInput(BaseModel):
 
 @router.post("/sampling-points")
 async def create_sampling_point(
-    body: SamplingPointInput, auth: AuthContext = require_auth()
+    body: SamplingPointInput, auth: AuthContext = _REQUIRE_AUTH
 ):
     tenant_id = auth.tenant_id
     if body.sand is not None and body.silt is not None and body.clay is not None:
@@ -111,7 +113,7 @@ async def create_sampling_point(
 
 
 @router.post("/surveys")
-async def create_survey(body: SurveyInput, auth: AuthContext = require_auth()):
+async def create_survey(body: SurveyInput, auth: AuthContext = _REQUIRE_AUTH):
     tenant_id = auth.tenant_id
     if body.survey_type not in ("lab", "em", "nir", "auger"):
         raise HTTPException(
@@ -146,7 +148,7 @@ async def create_survey(body: SurveyInput, auth: AuthContext = require_auth()):
 async def force_ingest(
     parcel_id: str,
     request: Request,
-    auth: AuthContext = require_auth(),
+    auth: AuthContext = _REQUIRE_AUTH,
 ):
     redis = get_redis_pool(request)
     await redis.enqueue_job("ingest_parcel", parcel_id, auth.tenant_id, {}, "v1")
@@ -316,8 +318,8 @@ def _sampling_point_entity(cleaned: dict) -> tuple[str, dict]:
 
 @router.post("/sampling-points/batch")
 async def create_sampling_points_batch(
-    file: UploadFile = File(...),
-    auth: AuthContext = require_auth(),
+    file: UploadFile = _FILE_UPLOAD,
+    auth: AuthContext = _REQUIRE_AUTH,
 ):
     tenant_id = auth.tenant_id
     """Upload CSV file with multiple soil sampling points.
@@ -406,7 +408,7 @@ async def rasterize_parcel_property(
     property: str = "penetrationResistance",
     depth: str = "0-30",
     resolution: int = 5,
-    auth: AuthContext = require_auth(),
+    auth: AuthContext = _REQUIRE_AUTH,
 ):
     """Generate an intra-parcel raster from SoilSamplingPoint measurements.
 
@@ -433,10 +435,9 @@ async def rasterize_parcel_property(
         for e in matching:
             loc = e.get("location", {}).get("value", {})
             coords = loc.get("coordinates", [])
-            if len(coords) < 2:
+            if len(coords) < 2 and loc.get("type") == "Point":
                 # Try GeoProperty alternate format
-                if loc.get("type") == "Point":
-                    coords = loc.get("coordinates", [])
+                coords = loc.get("coordinates", [])
             if len(coords) < 2:
                 continue
 

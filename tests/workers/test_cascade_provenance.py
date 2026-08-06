@@ -1,4 +1,4 @@
-from nkz_soil.models.domain import SoilDataResult, Horizon, DepthInterval
+from nkz_soil.models.domain import DepthInterval, Horizon, SoilDataResult
 from nkz_soil.workers.ingest import _cascade_merge
 
 

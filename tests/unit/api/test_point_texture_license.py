@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-
 from nkz_soil.api.main import create_app
 from nkz_soil.models.domain import Horizon, SoilDataResult
 

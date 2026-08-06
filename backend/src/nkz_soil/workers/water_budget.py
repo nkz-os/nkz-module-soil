@@ -10,8 +10,7 @@ Runs every 6 hours via Arq schedule:
 6. Upserts computed attributes back to AgriSoil in Orion-LD
 """
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -113,7 +112,7 @@ async def compute_water_budgets(ctx: dict) -> dict:
                         "type": "Property",
                         "value": {
                             "@type": "DateTime",
-                            "@value": datetime.now(timezone.utc).isoformat(),
+                            "@value": datetime.now(UTC).isoformat(),
                         },
                     },
                 }
@@ -131,7 +130,7 @@ async def compute_water_budgets(ctx: dict) -> dict:
                 await orion.patch_entity(entity["id"], attrs)
                 stats["processed"] += 1
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — water budget computation may fail for various reasons; log and continue
                 logger.error(
                     "Failed to compute water budget for %s: %s",
                     entity.get("id"), e,
@@ -144,12 +143,12 @@ async def compute_water_budgets(ctx: dict) -> dict:
         await orion.close()
 
 
-async def _get_current_moisture(orion: OrionClient, entity_id: str) -> Optional[float]:
+async def _get_current_moisture(orion: OrionClient, entity_id: str) -> float | None:
     """Try to get current soil moisture from IoT sensor or timeseries."""
     return None
 
 
-async def _get_et0_forecast(parcel_ref: str) -> Optional[list]:
+async def _get_et0_forecast(parcel_ref: str) -> list | None:
     """Fetch 7-day ET0 forecast from weather-map API."""
     if not parcel_ref:
         return None
@@ -163,13 +162,13 @@ async def _get_et0_forecast(parcel_ref: str) -> Optional[list]:
             if resp.status_code == 200:
                 data = resp.json()
                 return data.get("forecast", [])
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — external weather API call may fail for many reasons; return None gracefully
         logger.warning("Failed to fetch ET0 forecast: %s", e)
     return None
 
 
 def _default_forecast() -> list:
-    today = datetime.now(timezone.utc)
+    today = datetime.now(UTC)
     return [
         {
             "day": (today + timedelta(days=i)).strftime("%Y-%m-%d"),
@@ -192,7 +191,7 @@ def _compute_projection(current_moisture: float, fc: float, pwp: float, forecast
     return forecast
 
 
-def _generate_recommendation(depletion: float, forecast: list, fc: float, awc: float) -> Optional[dict]:
+def _generate_recommendation(depletion: float, forecast: list, fc: float, awc: float) -> dict | None:
     if depletion < AWC_DEPLETION_THRESHOLD or awc <= 0:
         return None
     for day in forecast:

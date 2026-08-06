@@ -1,7 +1,9 @@
 """GET /v1/soil/capabilities — serve the parsed capabilities.yaml manifest."""
 from __future__ import annotations
+
 from functools import lru_cache
 from pathlib import Path
+
 import yaml
 from fastapi import APIRouter, HTTPException
 

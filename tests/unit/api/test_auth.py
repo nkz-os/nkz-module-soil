@@ -2,7 +2,6 @@
 
 import pytest
 from fastapi.testclient import TestClient
-
 from nkz_soil.api.dependencies import gateway_auth_headers
 from nkz_soil.api.main import create_app
 

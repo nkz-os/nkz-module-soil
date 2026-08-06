@@ -1,4 +1,4 @@
-from nkz_soil.providers.lucas_texture_raster import _sample_points, LucasTextureRasterProvider
+from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider, _sample_points
 
 
 def test_sample_points_includes_centroid_and_interior():

@@ -1,8 +1,9 @@
 """Tests for the reap_stuck_jobs worker function."""
 
 import time
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 
 @pytest.mark.asyncio

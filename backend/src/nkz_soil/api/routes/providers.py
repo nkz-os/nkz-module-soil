@@ -1,11 +1,12 @@
 from fastapi import APIRouter
-
 from nkz_platform_sdk import AuthContext
+
 from nkz_soil.api.dependencies import require_auth
 from nkz_soil.api.limiter import limiter
 from nkz_soil.providers.base import ProviderRegistry
 
 router = APIRouter()
+_REQUIRE_AUTH = require_auth()
 
 _registry: ProviderRegistry | None = None
 
@@ -17,7 +18,7 @@ def set_registry(registry: ProviderRegistry):
 
 @router.get("/providers/health")
 @limiter.exempt
-async def provider_health(auth: AuthContext = require_auth()):
+async def provider_health(auth: AuthContext = _REQUIRE_AUTH):
     if not _registry:
         return {"providers": []}
     results = []
@@ -31,14 +32,14 @@ async def provider_health(auth: AuthContext = require_auth()):
                     "latency_ms": health.latency_ms,
                 }
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 — health check must never fail regardless of provider error
             results.append({"name": p.name, "status": "down", "latency_ms": 0})
     return {"providers": results}
 
 
 @router.get("/providers/coverage")
 @limiter.exempt
-async def provider_coverage(bbox: str, auth: AuthContext = require_auth()):
+async def provider_coverage(bbox: str, auth: AuthContext = _REQUIRE_AUTH):
     coords = [float(c) for c in bbox.split(",")]
     geometry = {
         "type": "Polygon",

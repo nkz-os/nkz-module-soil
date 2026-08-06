@@ -1,8 +1,8 @@
 """Tests for water_budget worker."""
 from nkz_soil.workers.water_budget import (
     _compute_projection,
-    _generate_recommendation,
     _default_forecast,
+    _generate_recommendation,
 )
 
 

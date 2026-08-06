@@ -1,14 +1,15 @@
 import logging
 
 from fastapi import APIRouter, HTTPException
-
 from nkz_platform_sdk import AuthContext
+
 from nkz_soil.api.dependencies import require_auth
-from nkz_soil.api.geojson import is_allowed_attribute, build_parcel_featurecollection
+from nkz_soil.api.geojson import build_parcel_featurecollection, is_allowed_attribute
 from nkz_soil.api.limiter import limiter
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 
 logger = logging.getLogger(__name__)
+_REQUIRE_AUTH = require_auth()
 
 # Map layer IDs to AgriSoil horizon property names
 _LAYER_PROPERTY_MAP = {
@@ -124,7 +125,7 @@ async def parcels_geojson(
     attribute: str,
     scope: str = "all",
     parcel: str | None = None,
-    auth: AuthContext = require_auth(),
+    auth: AuthContext = _REQUIRE_AUTH,
 ):
     if not is_allowed_attribute(attribute):
         raise HTTPException(status_code=400, detail=f"attribute '{attribute}' is not a servable layer")
@@ -145,7 +146,7 @@ async def render_layer(
     layer_id: str,
     parcel_id: str,
     depth: str = "0-30",
-    auth: AuthContext = require_auth(),
+    auth: AuthContext = _REQUIRE_AUTH,
 ):
     """Serve or generate a raster layer for a soil property."""
     from nkz_soil.storage.minio import generate_presigned_url, get_minio_client

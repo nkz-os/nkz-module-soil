@@ -1,11 +1,12 @@
 """LUCAS PostGIS KNN provider returns weighted average of nearest N points."""
 from __future__ import annotations
-from pathlib import Path
-import pytest
 
+from pathlib import Path
+
+import pytest
 from nkz_soil.ingest.lucas_loader import load_lucas_topsoil
+from nkz_soil.models.domain import DepthInterval, SoilProperty
 from nkz_soil.providers.lucas import LucasProvider
-from nkz_soil.models.domain import SoilProperty, DepthInterval
 from nkz_soil.storage import pg as pg_module
 
 from .conftest import _run

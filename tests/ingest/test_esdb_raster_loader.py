@@ -1,8 +1,9 @@
 """ESDB raster cataloger: MinIO objects → soil_module.esdb_raster_index rows."""
 from __future__ import annotations
-import asyncpg
+
 import os
 
+import asyncpg
 from nkz_soil.ingest.esdb_raster_loader import catalog_esdb_rasters
 from nkz_soil.storage import pg as pg_module
 

@@ -1,18 +1,17 @@
-from datetime import timedelta, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 
 from nkz_soil.models.domain import (
-    SoilProperty,
     DepthInterval,
-    SoilDataResult,
-    ProviderHealth,
     GeographicScope,
     Horizon,
+    ProviderHealth,
+    SoilDataResult,
+    SoilProperty,
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
-
 
 WFS_URL = "https://idena.navarra.es/ogc/wfs"
 
@@ -215,11 +214,11 @@ class IdenaProvider:
                     name=self.name,
                     status="ok",
                     latency_ms=resp.elapsed.total_seconds() * 1000,
-                    last_success=datetime.now(),
+                    last_success=datetime.now(tz=UTC),
                     error_count=0,
                     cache_hit_rate=0.0,
                 )
-        except Exception:
+        except Exception:  # noqa: BLE001 — health check must never fail; provider errors become status=down
             return ProviderHealth(
                 name=self.name,
                 status="down",

@@ -1,7 +1,7 @@
 from nkz_soil.api.routes.subscriptions import (
+    SUBSCRIPTION_ID,
     _compute_parcel_hash,
     _expand_geometry,
-    SUBSCRIPTION_ID,
 )
 
 

@@ -1,5 +1,5 @@
-from nkz_soil.providers.cache import _serialize_result, _deserialize_result
-from nkz_soil.models.domain import SoilDataResult, Horizon
+from nkz_soil.models.domain import Horizon, SoilDataResult
+from nkz_soil.providers.cache import _deserialize_result, _serialize_result
 
 
 def test_roundtrip_preserves_provenance():

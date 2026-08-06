@@ -1,5 +1,6 @@
 """Shared pytest fixtures and helpers for ingest tests."""
 from __future__ import annotations
+
 import asyncio
 import os
 from pathlib import Path
@@ -9,12 +10,10 @@ import boto3
 import numpy as np
 import pytest
 import rasterio
+from nkz_soil.storage import pg as pg_module
 from rasterio.transform import from_origin
 from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
-
-from nkz_soil.storage import pg as pg_module
-
 
 # ---------------------------------------------------------------------------
 # Helper — run a coroutine in a fresh event loop

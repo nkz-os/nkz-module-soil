@@ -1,5 +1,6 @@
 """GET /v1/soil/capabilities returns the parsed capabilities.yaml."""
 from __future__ import annotations
+
 from fastapi.testclient import TestClient
 from nkz_soil.api.main import app
 
