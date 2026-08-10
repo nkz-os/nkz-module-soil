@@ -50,7 +50,9 @@ def test_parcel_summary_found(client, mock_orion):
     resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["dataSource"] == "soilgrids"
+    assert body["dataSource"] == {"type": "Property", "value": "soilgrids"}
+    assert body["uncertainty"] == {"type": "Property", "value": 0}
+    assert body["relativeCompaction"] == {"type": "Property", "value": None}
     assert len(body["horizons"]) == 1
 
 
