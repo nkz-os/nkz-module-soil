@@ -41,9 +41,18 @@ async def parcel_summary(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH):
         entity = await _first_agri_soil(orion, parcel_id)
         return {
             "horizons": sanitize_horizons(entity.get("horizons", {}).get("value", [])),
-            "dataSource": _prop_value(entity, "dataSource", ""),
-            "uncertainty": _prop_value(entity, "uncertainty", 0),
-            "relativeCompaction": _prop_value(entity, "relativeCompaction"),
+            "dataSource": {
+                "type": "Property",
+                "value": _prop_value(entity, "dataSource", ""),
+            },
+            "uncertainty": {
+                "type": "Property",
+                "value": _prop_value(entity, "uncertainty", 0),
+            },
+            "relativeCompaction": {
+                "type": "Property",
+                "value": _prop_value(entity, "relativeCompaction"),
+            },
         }
 
 
