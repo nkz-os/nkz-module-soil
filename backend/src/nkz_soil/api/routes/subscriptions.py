@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.api.limiter import limiter
-from nkz_soil.config import CONTEXT_URL, INGESTION_BUFFER_M, ORION_WEBHOOK_SECRET, SOIL_INGEST_TTL
+from nkz_soil.config import INGESTION_BUFFER_M, ORION_WEBHOOK_SECRET, SOIL_INGEST_TTL
 from nkz_soil.storage.orion import OrionClient
 
 logger = logging.getLogger(__name__)
@@ -181,12 +181,11 @@ async def register_subscription(auth: AuthContext = _REQUIRE_AUTH_ADMIN):
                 "accept": "application/json",
             },
         },
-        "@context": [CONTEXT_URL],
     }
 
     async with OrionClient(auth.tenant_id) as orion:
         try:
-            await orion.create_entity(subscription)
+            await orion.create_subscription(subscription)
             return {"status": "registered", "subscriptionId": SUBSCRIPTION_ID}
         except Exception as e:  # noqa: BLE001 — Orion may raise various errors; narrow if OrionClient propagates typed exceptions
             if "already exists" in str(e).lower():

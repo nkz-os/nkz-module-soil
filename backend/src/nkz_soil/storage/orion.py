@@ -204,6 +204,20 @@ class OrionClient:
                 return None
             raise
 
+    async def create_subscription(self, subscription: dict[str, Any]) -> str:
+        """Register an NGSI-LD subscription. Returns the Location header.
+
+        The document goes as application/json + Link, so it must NOT carry an
+        @context member: that combination is an Orion-LD 400.
+        """
+        resp = await self._sdk._client.post(
+            self._sdk._url("/ngsi-ld/v1/subscriptions"),
+            json=subscription,
+            headers=self._sdk._headers("application/json"),
+        )
+        resp.raise_for_status()
+        return resp.headers.get("Location", "")
+
     async def get_subscription(self, subscription_id: str) -> dict[str, Any]:
         resp = await self._sdk._client.get(
             self._sdk._url(f"/ngsi-ld/v1/subscriptions/{subscription_id}"),
