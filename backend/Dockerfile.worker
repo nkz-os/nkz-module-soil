@@ -2,8 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install git to clone SDK from source (not on PyPI)
-RUN apt-get update && apt-get install -y --no-install-recommends git && \
+# git: clone SDK from source (not on PyPI).
+# tini: arq runs as PID 1 and never reaps orphans, so any process orphaned inside
+# the container (a timed-out exec probe, for one) is adopted by it and leaks as a
+# zombie forever. tini as PID 1 reaps them.
+RUN apt-get update && apt-get install -y --no-install-recommends git tini && \
     rm -rf /var/lib/apt/lists/* && \
     git clone --depth 1 https://github.com/nkz-os/nkz.git /tmp/nkz-src && \
     pip install --no-cache-dir /tmp/nkz-src/services/nkz-platform-sdk && \
@@ -14,4 +17,7 @@ COPY backend/ ./backend/
 
 RUN pip install --no-cache-dir -e ".[geo]"
 
+# ENTRYPOINT, not CMD: a `command:` in the k8s manifest would override CMD and
+# bypass tini. The Deployment must NOT set `command:` for this to hold.
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["arq", "nkz_soil.workers.ingest.WorkerSettings"]
