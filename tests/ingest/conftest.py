@@ -74,7 +74,12 @@ def _make_geotiff() -> bytes:
 
 @pytest.fixture(scope="module")
 def minio_with_objects():
-    with MinioContainer() as mc:
+    # Explicit image: testcontainers defaults to minio/minio on Docker Hub, which
+    # MinIO has withdrawn entirely (even :latest is denied), breaking CI since
+    # ~2026-08-26. quay.io is the live registry; pinned, not :latest.
+    with MinioContainer(
+        image="quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z"
+    ) as mc:
         endpoint = f"http://{mc.get_container_host_ip()}:{mc.get_exposed_port(9000)}"
         os.environ.update({
             "MINIO_ENDPOINT": endpoint,
