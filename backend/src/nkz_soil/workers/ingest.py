@@ -716,6 +716,11 @@ def _parse_redis_url(url: str) -> RedisSettings:
 
 class WorkerSettings:
     functions: list = [ingest_parcel, compute_water_budgets, backfill_parcels_without_soil]  # noqa: RUF012
+    # Heartbeat the k8s liveness probe reads via `arq ... --check`. arq's default is
+    # 3600s, which would only catch a hang an hour after it started. 30s is safe
+    # because every blocking call (boto3 + rasterio in the raster providers) runs in
+    # a worker thread, so the event loop stays free to refresh the key.
+    health_check_interval: int = 30
     cron_jobs: list = [  # noqa: RUF012
         CronJob(
             name="backfill_soil",
