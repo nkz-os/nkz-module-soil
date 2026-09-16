@@ -2,6 +2,7 @@ from nkz_soil.api.routes.subscriptions import (
     SUBSCRIPTION_ID,
     _compute_parcel_hash,
     _expand_geometry,
+    _reject_unauthenticated_notify,
 )
 
 
@@ -58,3 +59,31 @@ def test_expand_geometry_unknown_returns_original():
 
 def test_subscription_id_constant():
     assert SUBSCRIPTION_ID == "urn:ngsi-ld:Subscription:soil-parcel-ingest"
+
+
+def test_reject_notify_gate_off_by_default(monkeypatch):
+    monkeypatch.delenv("NOTIFY_REQUIRE_INTERNAL_SECRET", raising=False)
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s3cret")
+    assert _reject_unauthenticated_notify("wrong") is None
+
+
+def test_reject_notify_gate_on_wrong_secret(monkeypatch):
+    monkeypatch.setenv("NOTIFY_REQUIRE_INTERNAL_SECRET", "true")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s3cret")
+    err = _reject_unauthenticated_notify("wrong")
+    assert err is not None
+    assert err.status_code == 401
+
+
+def test_reject_notify_gate_on_correct_secret(monkeypatch):
+    monkeypatch.setenv("NOTIFY_REQUIRE_INTERNAL_SECRET", "true")
+    monkeypatch.setenv("INTERNAL_SERVICE_SECRET", "s3cret")
+    assert _reject_unauthenticated_notify("s3cret") is None
+
+
+def test_reject_notify_gate_on_missing_secret_config(monkeypatch):
+    monkeypatch.setenv("NOTIFY_REQUIRE_INTERNAL_SECRET", "true")
+    monkeypatch.delenv("INTERNAL_SERVICE_SECRET", raising=False)
+    err = _reject_unauthenticated_notify("anything")
+    assert err is not None
+    assert err.status_code == 401

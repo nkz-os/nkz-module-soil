@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
-    "nkz-platform-sdk>=0.1.0",
+    "nkz-platform-sdk>=0.8.4",
     "arq>=0.26",
     "redis>=5.0",
     "httpx>=0.28",

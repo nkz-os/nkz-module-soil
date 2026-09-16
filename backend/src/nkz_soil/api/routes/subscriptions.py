@@ -1,14 +1,16 @@
 import hashlib
+import hmac
 import logging
+import os
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from nkz_platform_sdk import AuthContext
 from pydantic import BaseModel
 
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.api.limiter import limiter
-from nkz_soil.config import INGESTION_BUFFER_M, ORION_WEBHOOK_SECRET, SOIL_INGEST_TTL
+from nkz_soil.config import INGESTION_BUFFER_M, SOIL_INGEST_TTL
 from nkz_soil.storage.orion import OrionClient
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,7 @@ router = APIRouter()
 _REQUIRE_AUTH_ADMIN = require_auth(roles=["GestorAgricola", "Administrador"])
 
 SUBSCRIPTION_ID = "urn:ngsi-ld:Subscription:soil-parcel-ingest"
+INTERNAL_SERVICE_SECRET = os.getenv("INTERNAL_SERVICE_SECRET", "")
 
 
 class OrionNotification(BaseModel):
@@ -44,12 +47,17 @@ def _resolve_webhook_tenant(request: Request) -> str:
     return tenant_id
 
 
-def _validate_webhook_secret(request: Request) -> None:
-    if not ORION_WEBHOOK_SECRET:
-        return
-    provided = request.headers.get("X-Orion-Webhook-Secret", "")
-    if provided != ORION_WEBHOOK_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+def _reject_unauthenticated_notify(x_internal_secret: str | None) -> HTTPException | None:
+    """Flag-gated auth for the Orion notification receiver (two-phase rollout)."""
+    require = os.getenv("NOTIFY_REQUIRE_INTERNAL_SECRET", "").lower() in (
+        "1", "true", "yes", "on"
+    )
+    if not require:
+        return None
+    secret = os.getenv("INTERNAL_SERVICE_SECRET", "")
+    if not secret or not hmac.compare_digest(x_internal_secret or "", secret):
+        return HTTPException(status_code=401, detail="missing or invalid internal secret")
+    return None
 
 
 async def _is_already_processed(redis, parcel_hash: str) -> bool:
@@ -106,8 +114,13 @@ expand_geometry = _expand_geometry
 
 @router.post("/webhooks/orion")
 @limiter.exempt
-async def orion_webhook(request: Request):
-    _validate_webhook_secret(request)
+async def orion_webhook(
+    request: Request,
+    x_internal_secret: str | None = Header(None, alias="X-Internal-Service-Secret"),
+):
+    reject = _reject_unauthenticated_notify(x_internal_secret)
+    if reject:
+        raise reject
     body = await request.json()
 
     subscription_id = body.get("subscriptionId", "")
@@ -168,6 +181,14 @@ async def orion_webhook(request: Request):
 
 @router.post("/subscriptions/register")
 async def register_subscription(auth: AuthContext = _REQUIRE_AUTH_ADMIN):
+    endpoint = {
+        "uri": "http://soil-module-service:8000/v1/soil/webhooks/orion",
+        "accept": "application/json",
+    }
+    if INTERNAL_SERVICE_SECRET:
+        endpoint["receiverInfo"] = [
+            {"key": "X-Internal-Service-Secret", "value": INTERNAL_SERVICE_SECRET}
+        ]
     subscription = {
         "id": SUBSCRIPTION_ID,
         "type": "Subscription",
@@ -176,10 +197,7 @@ async def register_subscription(auth: AuthContext = _REQUIRE_AUTH_ADMIN):
         "notification": {
             "attributes": ["location", "dateModified"],
             "format": "normalized",
-            "endpoint": {
-                "uri": "http://soil-module-service:8000/v1/soil/webhooks/orion",
-                "accept": "application/json",
-            },
+            "endpoint": endpoint,
         },
     }
 

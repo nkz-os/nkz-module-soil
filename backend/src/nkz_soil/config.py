@@ -8,7 +8,6 @@ MINIO_ACCESS_KEY = os.environ["MINIO_ACCESS_KEY"]
 MINIO_SECRET_KEY = os.environ["MINIO_SECRET_KEY"]
 REDIS_URL = os.environ["REDIS_URL"]
 CONTEXT_URL = os.environ["CONTEXT_URL"]
-ORION_WEBHOOK_SECRET = os.getenv("ORION_WEBHOOK_SECRET", "")
 
 # Internal service-to-service auth (shared with api-gateway via SealedSecret)
 INTERNAL_SERVICE_SECRET = os.environ.get("INTERNAL_SERVICE_SECRET", "")
