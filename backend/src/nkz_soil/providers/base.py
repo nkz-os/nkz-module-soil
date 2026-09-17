@@ -1,12 +1,18 @@
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 import redis.asyncio as aioredis
 from shapely.geometry import box, shape
 
 from nkz_soil.config import REDIS_URL
-from nkz_soil.models.domain import SoilProperty, DepthInterval, SoilDataResult, ProviderHealth, GeographicScope
+from nkz_soil.models.domain import (
+    DepthInterval,
+    GeographicScope,
+    ProviderHealth,
+    SoilDataResult,
+    SoilProperty,
+)
 
 
 @dataclass
@@ -37,7 +43,7 @@ def geometry_intersects_bbox(geometry: dict, bbox: tuple[float, float, float, fl
         geom = shape(geometry)
         bbox_geom = box(*bbox)
         return bool(geom.intersects(bbox_geom))
-    except Exception:
+    except Exception:  # noqa: BLE001 — geometry intersection may fail for malformed inputs; default to True (cover-all)
         return True
 
 
@@ -69,13 +75,13 @@ class CircuitBreaker:
         current = self._failures.get(provider_name, 0) + 1
         self._failures[provider_name] = current
         if current >= self.max_failures:
-            self._isolated_until[provider_name] = datetime.now(timezone.utc) + timedelta(seconds=self.isolate_seconds)
+            self._isolated_until[provider_name] = datetime.now(UTC) + timedelta(seconds=self.isolate_seconds)
 
     def is_open(self, provider_name: str) -> bool:
         isolated_until = self._isolated_until.get(provider_name)
-        if isolated_until and datetime.now(timezone.utc) < isolated_until:
+        if isolated_until and datetime.now(UTC) < isolated_until:
             return True
-        if isolated_until and datetime.now(timezone.utc) >= isolated_until:
+        if isolated_until and datetime.now(UTC) >= isolated_until:
             self._failures.pop(provider_name, None)
             self._isolated_until.pop(provider_name, None)
         return False
@@ -116,7 +122,7 @@ class RedisCircuitBreaker:
         current = await client.incr(key)
         if current >= self.max_failures:
             iso_key = self.ISOLATED_KEY.format(name=provider_name)
-            await client.set(iso_key, datetime.now(timezone.utc).isoformat(), ex=self.isolate_seconds)
+            await client.set(iso_key, datetime.now(UTC).isoformat(), ex=self.isolate_seconds)
 
     async def is_open(self, provider_name: str) -> bool:
         client = await self._get_client()
@@ -125,7 +131,7 @@ class RedisCircuitBreaker:
         if isolated_until:
             try:
                 until = datetime.fromisoformat(isolated_until)
-                if datetime.now(timezone.utc) < until:
+                if datetime.now(UTC) < until:
                     return True
             except ValueError:
                 pass

@@ -1,10 +1,10 @@
+from nkz_soil.models.domain import DepthInterval, Horizon, SoilDataResult, SoilProperty
 from nkz_soil.providers.cache import (
     _compute_cache_key,
+    _deserialize_result,
     _get_ttl,
     _serialize_result,
-    _deserialize_result,
 )
-from nkz_soil.models.domain import SoilProperty, DepthInterval, SoilDataResult, Horizon
 
 
 def test_cache_key_deterministic():

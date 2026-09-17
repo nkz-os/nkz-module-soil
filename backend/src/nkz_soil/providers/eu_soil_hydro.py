@@ -1,16 +1,15 @@
-from datetime import timedelta, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
 from nkz_soil.models.domain import (
-    SoilProperty,
     DepthInterval,
-    SoilDataResult,
-    ProviderHealth,
     GeographicScope,
+    ProviderHealth,
+    SoilDataResult,
+    SoilProperty,
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
-
 
 LICENSE_WARNING = (
     "EU-SoilHydroGrids is licensed 'Free for non-commercial use' only. "
@@ -66,11 +65,11 @@ class EuSoilHydroGridsProvider:
                     name=self.name,
                     status="ok" if resp.status_code < 400 else "degraded",
                     latency_ms=resp.elapsed.total_seconds() * 1000,
-                    last_success=datetime.now(),
+                    last_success=datetime.now(tz=UTC),
                     error_count=0,
                     cache_hit_rate=0.0,
                 )
-        except Exception:
+        except Exception:  # noqa: BLE001 — health check must never fail; provider errors become status=down
             return ProviderHealth(
                 name=self.name,
                 status="down",

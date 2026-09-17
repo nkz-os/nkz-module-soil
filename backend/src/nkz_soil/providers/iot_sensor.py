@@ -1,14 +1,13 @@
-from datetime import timedelta, datetime
-
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from nkz_soil.models.domain import (
-    SoilProperty,
     DepthInterval,
-    SoilDataResult,
-    ProviderHealth,
     GeographicScope,
     Horizon,
+    ProviderHealth,
+    SoilDataResult,
+    SoilProperty,
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.storage.orion import OrionClient, current_tenant
@@ -20,7 +19,7 @@ class IotSensorProvider:
     geographic_scope = GeographicScope(bbox=(-180, -90, 180, 90), countries=["*"])
     update_cadence = timedelta(hours=1)
 
-    SENSOR_CATEGORY_TO_PROPERTY = {
+    SENSOR_CATEGORY_TO_PROPERTY: dict = {  # noqa: RUF012
         "soil_ph": SoilProperty.PH,
         "soil_moisture": SoilProperty.AVAILABLE_WATER_CAPACITY,
         "soil_salinity": SoilProperty.CEC,
@@ -28,7 +27,7 @@ class IotSensorProvider:
         "soil_penetrometer": SoilProperty.PENETRATION_RESISTANCE,
     }
 
-    DEVICE_CATEGORIES = list(SENSOR_CATEGORY_TO_PROPERTY.keys())
+    DEVICE_CATEGORIES: list = list(SENSOR_CATEGORY_TO_PROPERTY.keys())  # noqa: RUF012
 
     def covers(self, geometry: dict) -> bool:
         return geometry_intersects_bbox(geometry, self.geographic_scope.bbox)
@@ -81,7 +80,7 @@ class IotSensorProvider:
             name=self.name,
             status="ok",
             latency_ms=0,
-            last_success=datetime.now(),
+            last_success=datetime.now(tz=UTC),
             error_count=0,
             cache_hit_rate=0.0,
         )

@@ -1,16 +1,16 @@
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from nkz_soil.workers.ingest import (
-    _cascade_merge,
-    _apply_pedotransfer,
-    _aggregate_uncertainty,
-    _primary_source,
-    _horizon_to_dict,
-    EnrichedHorizon,
-    STANDARD_DEPTHS,
-)
+import pytest
 from nkz_soil.models.domain import Horizon, SoilDataResult
+from nkz_soil.workers.ingest import (
+    STANDARD_DEPTHS,
+    EnrichedHorizon,
+    _aggregate_uncertainty,
+    _apply_pedotransfer,
+    _cascade_merge,
+    _horizon_to_dict,
+    _primary_source,
+)
 
 
 def make_result(provider, horizons, uncertainty=0.1, priority=0):
@@ -127,6 +127,7 @@ async def test_ingest_parcel_creates_entity():
     mock_orion.__aenter__ = AsyncMock(return_value=mock_orion)
     mock_orion.__aexit__ = AsyncMock(return_value=None)
     mock_orion.create_entity = AsyncMock()
+    mock_orion.get_entity = AsyncMock(return_value=None)  # not found → create path
 
     mock_cb = AsyncMock()
     mock_cb.is_open = AsyncMock(return_value=False)
@@ -173,7 +174,7 @@ async def test_ingest_parcel_links_real_parcel_urn():
     mock_orion.__aenter__ = AsyncMock(return_value=mock_orion)
     mock_orion.__aexit__ = AsyncMock(return_value=None)
     mock_orion.create_entity = AsyncMock()
-    mock_orion.query_entities = AsyncMock(return_value=[])
+    mock_orion.get_entity = AsyncMock(return_value=None)  # not found → create path
 
     mock_cb = AsyncMock()
     mock_cb.is_open = AsyncMock(return_value=False)
@@ -204,3 +205,57 @@ async def test_ingest_parcel_links_real_parcel_urn():
         assert entity["id"] == (
             "urn:ngsi-ld:AgriSoilExtended:da36ccd2-85d2-4c76-b552-c5c835a987c1"
         )
+
+
+@pytest.mark.asyncio
+async def test_ingest_parcel_updates_via_append_not_patch():
+    """Re-ingesting an already-existing entity must use append_entity_attrs
+    (POST /attrs), not patch_entity (PATCH /attrs).
+
+    Bug (found 2026-07-23 during live verification): PATCH /attrs only
+    updates attributes the entity already has — a field introduced after
+    the entity was first created (e.g. dataSource) silently lands in
+    Orion's `notUpdated` and never persists on re-ingest of an existing
+    parcel. Only affects parcels ingested before a new field was added;
+    a fresh create was never broken.
+    """
+    from nkz_soil.workers.ingest import ingest_parcel
+
+    entity_id = "urn:ngsi-ld:AgriSoilExtended:test-parcel"
+    mock_orion = AsyncMock()
+    mock_orion.__aenter__ = AsyncMock(return_value=mock_orion)
+    mock_orion.__aexit__ = AsyncMock(return_value=None)
+    mock_orion.create_entity = AsyncMock()
+    mock_orion.patch_entity = AsyncMock()
+    mock_orion.append_entity_attrs = AsyncMock()
+    mock_orion.get_entity = AsyncMock(return_value={"id": entity_id})  # entity exists → append path
+
+    mock_cb = AsyncMock()
+    mock_cb.is_open = AsyncMock(return_value=False)
+    mock_cb.record_success = AsyncMock()
+    mock_cb.record_failure = AsyncMock()
+
+    mock_cache = AsyncMock()
+    mock_cache.get = AsyncMock(return_value=None)
+    mock_cache.set = AsyncMock()
+    mock_cache.close = AsyncMock()
+
+    with patch("nkz_soil.workers.ingest.OrionClient", return_value=mock_orion):
+        ctx = {"registry": MagicMock(), "circuit_breaker": mock_cb, "cache": mock_cache}
+        ctx["registry"].get_all.return_value = []
+
+        await ingest_parcel(
+            ctx,
+            parcel_id="test-parcel",
+            tenant_id="test-tenant",
+            geometry={"type": "Point", "coordinates": [-1.6, 42.8]},
+            parcel_version_id="v1",
+        )
+
+        mock_orion.append_entity_attrs.assert_called_once()
+        mock_orion.patch_entity.assert_not_called()
+        mock_orion.create_entity.assert_not_called()
+        called_id, called_attrs = mock_orion.append_entity_attrs.call_args[0]
+        assert called_id == entity_id
+        assert "id" not in called_attrs
+        assert "type" not in called_attrs

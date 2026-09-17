@@ -1,3 +1,8 @@
-from nkz_soil.providers.base import SoilDataProvider, ProviderRegistry, CircuitBreaker, RedisCircuitBreaker
+from nkz_soil.providers.base import (
+    CircuitBreaker,
+    ProviderRegistry,
+    RedisCircuitBreaker,
+    SoilDataProvider,
+)
 
-__all__ = ["SoilDataProvider", "ProviderRegistry", "CircuitBreaker", "RedisCircuitBreaker"]
+__all__ = ["CircuitBreaker", "ProviderRegistry", "RedisCircuitBreaker", "SoilDataProvider"]

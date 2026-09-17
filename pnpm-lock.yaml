@@ -12,11 +12,11 @@ importers:
         specifier: ^0.1.0-alpha.0
         version: 0.1.0-alpha.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@nekazari/module-kit':
-        specifier: ^0.7.0
-        version: 0.7.0(@nekazari/sdk@1.1.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@nekazari/viewer-kit@0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@tanstack/react-query@5.100.11(react@18.3.1))(react@18.3.1)
+        specifier: ^0.8.0
+        version: 0.8.0(@nekazari/sdk@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@nekazari/viewer-kit@0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@tanstack/react-query@5.100.11(react@18.3.1))(react@18.3.1)
       '@nekazari/sdk':
-        specifier: ^1.1.0
-        version: 1.1.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+        specifier: ^1.2.0
+        version: 1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@nekazari/ui-kit':
         specifier: ^1.0.2-alpha.4
         version: 1.0.2-alpha.4(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -44,7 +44,7 @@ importers:
     devDependencies:
       '@nekazari/module-builder':
         specifier: ^2.0.3
-        version: 2.0.5(@nekazari/module-kit@0.7.0(@nekazari/sdk@1.1.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@nekazari/viewer-kit@0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@tanstack/react-query@5.100.11(react@18.3.1))(react@18.3.1))(@vitejs/plugin-react@4.7.0(vite@5.4.21))(typescript@5.9.3)(vite@5.4.21)
+        version: 2.0.5(@nekazari/module-kit@0.8.0(@nekazari/sdk@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@nekazari/viewer-kit@0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@tanstack/react-query@5.100.11(react@18.3.1))(react@18.3.1))(@vitejs/plugin-react@4.7.0(vite@5.4.21))(typescript@5.9.3)(vite@5.4.21)
       '@testing-library/jest-dom':
         specifier: ^6.9.1
         version: 6.9.1
@@ -465,16 +465,16 @@ packages:
       '@vitejs/plugin-react': ^4.0.0
       vite: '>=5.0.0'
 
-  '@nekazari/module-kit@0.7.0':
-    resolution: {integrity: sha512-Vy0EwBWOAJf676J0vqVcFc+6uNG0Ck4gXBZS12cGpQm0wbmZhksOeWmn0o5cnz8+kT8hUEsQEINsDBbGV+pQbQ==}
+  '@nekazari/module-kit@0.8.0':
+    resolution: {integrity: sha512-Qwj4ZtLhpx2RM0Ms2pAvgLzdLbvtiAu7CEBWi3h8VS489+cICj27BTzCLK2Sa4FYutNrX8bBGUhiQhWfR5Ic2Q==}
     peerDependencies:
-      '@nekazari/sdk': '>=1.1.0'
+      '@nekazari/sdk': '>=1.2.0'
       '@nekazari/viewer-kit': '*'
       '@tanstack/react-query': '>=5.0.0'
       react: '>=18.0.0'
 
-  '@nekazari/sdk@1.1.4':
-    resolution: {integrity: sha512-gMZssToUbG1GcIu0nCd/u4vmmgx2tArsr29ESUthtwFz4zGbe8fFCIlsCuE2oL6FFMz5Otka6WRqRF7F/OzxoA==}
+  '@nekazari/sdk@1.2.0':
+    resolution: {integrity: sha512-Hx2PGSSKbLnWmWGZxdip//HuChkUUsrqMDY6ZSLQpV9kN9R9+oS3qb15PtPHFfu8ibZMZKSCl1+TFzIHAy4cIg==}
     peerDependencies:
       react: ^18.3.1
 
@@ -2375,8 +2375,8 @@ packages:
     resolution: {integrity: sha512-4LCcse/U2MHZ63HAJVE+v71o7yOdIe4cZ70Wpf8D/IyjDKYQLV5GD46B+hSTjJsvV5PztjvHoU580EftxjDZFQ==}
     engines: {node: '>=12.20'}
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
 snapshots:
 
@@ -2727,10 +2727,10 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@nekazari/module-builder@2.0.5(@nekazari/module-kit@0.7.0(@nekazari/sdk@1.1.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@nekazari/viewer-kit@0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@tanstack/react-query@5.100.11(react@18.3.1))(react@18.3.1))(@vitejs/plugin-react@4.7.0(vite@5.4.21))(typescript@5.9.3)(vite@5.4.21)':
+  '@nekazari/module-builder@2.0.5(@nekazari/module-kit@0.8.0(@nekazari/sdk@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@nekazari/viewer-kit@0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@tanstack/react-query@5.100.11(react@18.3.1))(react@18.3.1))(@vitejs/plugin-react@4.7.0(vite@5.4.21))(typescript@5.9.3)(vite@5.4.21)':
     dependencies:
       '@module-federation/vite': 1.15.5(typescript@5.9.3)(vite@5.4.21)
-      '@nekazari/module-kit': 0.7.0(@nekazari/sdk@1.1.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@nekazari/viewer-kit@0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@tanstack/react-query@5.100.11(react@18.3.1))(react@18.3.1)
+      '@nekazari/module-kit': 0.8.0(@nekazari/sdk@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@nekazari/viewer-kit@0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@tanstack/react-query@5.100.11(react@18.3.1))(react@18.3.1)
       '@vitejs/plugin-react': 4.7.0(vite@5.4.21)
       esbuild: 0.21.5
       vite: 5.4.21
@@ -2741,15 +2741,15 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@nekazari/module-kit@0.7.0(@nekazari/sdk@1.1.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@nekazari/viewer-kit@0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@tanstack/react-query@5.100.11(react@18.3.1))(react@18.3.1)':
+  '@nekazari/module-kit@0.8.0(@nekazari/sdk@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@nekazari/viewer-kit@0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@tanstack/react-query@5.100.11(react@18.3.1))(react@18.3.1)':
     dependencies:
-      '@nekazari/sdk': 1.1.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
+      '@nekazari/sdk': 1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@nekazari/viewer-kit': 0.1.1-alpha.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@tanstack/react-query': 5.100.11(react@18.3.1)
       react: 18.3.1
-      zod: 3.25.76
+      zod: 4.4.3
 
-  '@nekazari/sdk@1.1.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
+  '@nekazari/sdk@1.2.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3)':
     dependencies:
       i18next: 23.16.8
       react: 18.3.1
@@ -4554,4 +4554,4 @@ snapshots:
 
   yocto-queue@1.2.2: {}
 
-  zod@3.25.76: {}
+  zod@4.4.3: {}

@@ -1,8 +1,7 @@
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
-
 from nkz_soil.api.main import create_app
 
 
@@ -20,9 +19,11 @@ def mock_orion():
     mock.__aexit__ = AsyncMock(return_value=None)
     mock.query_entities = AsyncMock(return_value=[])
     mock.create_entity = AsyncMock()
-    with patch("nkz_soil.api.routes.reading.OrionClient", return_value=mock):
-        with patch("nkz_soil.api.routes.writing.OrionClient", return_value=mock):
-            yield mock
+    with (
+        patch("nkz_soil.api.routes.reading.OrionClient", return_value=mock),
+        patch("nkz_soil.api.routes.writing.OrionClient", return_value=mock),
+    ):
+        yield mock
 
 
 def test_health(client):
@@ -49,7 +50,9 @@ def test_parcel_summary_found(client, mock_orion):
     resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["dataSource"] == "soilgrids"
+    assert body["dataSource"] == {"type": "Property", "value": "soilgrids"}
+    assert body["uncertainty"] == {"type": "Property", "value": 0}
+    assert body["relativeCompaction"] == {"type": "Property", "value": None}
     assert len(body["horizons"]) == 1
 
 

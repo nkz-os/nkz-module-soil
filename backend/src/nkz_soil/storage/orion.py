@@ -171,7 +171,7 @@ class OrionClient:
                     eid = out.get("id") or entity.get("id", "")
                     if eid:
                         created_ids.append(eid)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 — Orion may reject entities for various reasons; collect and report
                     errors.append({"id": entity.get("id", ""), "error": str(exc)})
 
         await asyncio.gather(*[_one(e) for e in entities])
@@ -184,8 +184,39 @@ class OrionClient:
     async def patch_entity(self, entity_id: str, attrs: dict[str, Any]) -> None:
         await self._sdk.update_entity_attrs(entity_id, attrs)
 
+    async def append_entity_attrs(self, entity_id: str, attrs: dict[str, Any]) -> None:
+        # Unlike patch_entity (PATCH /attrs, updates existing attrs only —
+        # a brand-new attribute silently lands in Orion's `notUpdated` and
+        # never persists), this adds new attributes AND updates existing
+        # ones (POST /attrs, overwrite=True). Use this for entity updates
+        # that may introduce a field the entity didn't have before.
+        await self._sdk.append_entity_attrs(entity_id, attrs, overwrite=True)
+
     async def delete_entity(self, entity_id: str) -> None:
         await self._sdk.delete_entity(entity_id)
+
+    async def get_entity(self, entity_id: str) -> dict[str, Any] | None:
+        """Fetch a single entity by id. Returns None if not found (404)."""
+        try:
+            return await self._sdk.get_entity(entity_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return None
+            raise
+
+    async def create_subscription(self, subscription: dict[str, Any]) -> str:
+        """Register an NGSI-LD subscription. Returns the Location header.
+
+        The document goes as application/json + Link, so it must NOT carry an
+        @context member: that combination is an Orion-LD 400.
+        """
+        resp = await self._sdk._client.post(
+            self._sdk._url("/ngsi-ld/v1/subscriptions"),
+            json=subscription,
+            headers=self._sdk._headers("application/json"),
+        )
+        resp.raise_for_status()
+        return resp.headers.get("Location", "")
 
     async def get_subscription(self, subscription_id: str) -> dict[str, Any]:
         resp = await self._sdk._client.get(

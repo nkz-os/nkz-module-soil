@@ -9,7 +9,8 @@ from nkz_soil.api.limiter import limiter
 from nkz_soil.api.routes.capabilities import router as capabilities_router
 from nkz_soil.api.routes.layers import router as layers_router
 from nkz_soil.api.routes.metrics import router as metrics_router
-from nkz_soil.api.routes.providers import router as providers_router, set_registry
+from nkz_soil.api.routes.providers import router as providers_router
+from nkz_soil.api.routes.providers import set_registry
 from nkz_soil.api.routes.reading import router as reading_router
 from nkz_soil.api.routes.subscriptions import router as subscriptions_router
 from nkz_soil.api.routes.water_budget import router as water_budget_router

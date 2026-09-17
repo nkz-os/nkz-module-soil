@@ -1,13 +1,15 @@
 import hashlib
 import json
+import logging
 import time
 from typing import Any
 
 import redis.asyncio as aioredis
 
-from nkz_soil.config import REDIS_URL, CACHE_TTL_BASELINE, CACHE_TTL_REVISABLE
-from nkz_soil.models.domain import SoilProperty, DepthInterval, SoilDataResult
+logger = logging.getLogger(__name__)
 
+from nkz_soil.config import CACHE_TTL_BASELINE, CACHE_TTL_REVISABLE, REDIS_URL
+from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
 
 CACHE_KEY_PREFIX = "soil:cache:"
 
@@ -144,8 +146,8 @@ class ProviderCache:
                 self._memory_cache[key] = (time.time() + ttl, data)
                 self._hits += 1
                 return _deserialize_result(data)
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 — Redis may be unavailable; cache is best-effort
+            logger.debug("Cache get failed for %s", provider_name)
 
         self._misses += 1
         return None
@@ -165,8 +167,8 @@ class ProviderCache:
         try:
             client = await self._get_client()
             await client.set(key, json.dumps(data), ex=ttl)
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 — Redis may be unavailable; cache is best-effort
+            logger.debug("Cache set failed for %s", provider_name)
 
         self._memory_cache[key] = (time.time() + ttl, data)
 
@@ -180,8 +182,8 @@ class ProviderCache:
             else:
                 async for key in client.scan_iter(match=f"{CACHE_KEY_PREFIX}*"):
                     await client.delete(key)
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 — Redis may be unavailable; cache is best-effort
+            logger.debug("Cache invalidate failed for %s", provider_name or "all")
         self._memory_cache.clear()
 
     @property

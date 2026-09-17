@@ -4,18 +4,19 @@ Returns computed water budget from AgriSoil entity attributes + timeseries.
 No computation happens on read — all data is pre-computed by the Arq worker.
 """
 from fastapi import APIRouter, HTTPException
-
 from nkz_platform_sdk import AuthContext
+
 from nkz_soil.api.dependencies import require_auth
 from nkz_soil.api.limiter import limiter
 from nkz_soil.storage.orion import OrionClient, fetch_parcel_smi, parcel_ref_query
 
 router = APIRouter()
+_REQUIRE_AUTH = require_auth()
 
 
 @router.get("/parcel/{parcel_id}/water-budget")
 @limiter.exempt
-async def parcel_water_budget(parcel_id: str, auth: AuthContext = require_auth()):
+async def parcel_water_budget(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH):
     """Return the water budget for a parcel."""
     async with OrionClient(auth.tenant_id) as orion:
         entities = await orion.query_entities(
@@ -80,7 +81,7 @@ async def parcel_water_budget(parcel_id: str, auth: AuthContext = require_auth()
 
 @router.get("/parcel/{parcel_id}/moisture")
 @limiter.exempt
-async def parcel_moisture(parcel_id: str, auth: AuthContext = require_auth()):
+async def parcel_moisture(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH):
     """Return the latest SAR-derived Soil Moisture Index for a parcel.
 
     Queries ``EOProduct.sarMoisture`` (Sentinel-1 SAR, ESA Copernicus) from

@@ -1,21 +1,25 @@
 import hashlib
+import hmac
 import logging
-from datetime import datetime, timezone
+import os
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
+from nkz_platform_sdk import AuthContext
 from pydantic import BaseModel
 
-from nkz_platform_sdk import AuthContext
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.api.limiter import limiter
-from nkz_soil.config import CONTEXT_URL, INGESTION_BUFFER_M, ORION_WEBHOOK_SECRET, SOIL_INGEST_TTL
+from nkz_soil.config import INGESTION_BUFFER_M, SOIL_INGEST_TTL
 from nkz_soil.storage.orion import OrionClient
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_REQUIRE_AUTH_ADMIN = require_auth(roles=["GestorAgricola", "Administrador"])
 
 SUBSCRIPTION_ID = "urn:ngsi-ld:Subscription:soil-parcel-ingest"
+INTERNAL_SERVICE_SECRET = os.getenv("INTERNAL_SERVICE_SECRET", "")
 
 
 class OrionNotification(BaseModel):
@@ -43,12 +47,17 @@ def _resolve_webhook_tenant(request: Request) -> str:
     return tenant_id
 
 
-def _validate_webhook_secret(request: Request) -> None:
-    if not ORION_WEBHOOK_SECRET:
-        return
-    provided = request.headers.get("X-Orion-Webhook-Secret", "")
-    if provided != ORION_WEBHOOK_SECRET:
-        raise HTTPException(status_code=403, detail="Invalid webhook secret")
+def _reject_unauthenticated_notify(x_internal_secret: str | None) -> HTTPException | None:
+    """Flag-gated auth for the Orion notification receiver (two-phase rollout)."""
+    require = os.getenv("NOTIFY_REQUIRE_INTERNAL_SECRET", "").lower() in (
+        "1", "true", "yes", "on"
+    )
+    if not require:
+        return None
+    secret = os.getenv("INTERNAL_SERVICE_SECRET", "")
+    if not secret or not hmac.compare_digest(x_internal_secret or "", secret):
+        return HTTPException(status_code=401, detail="missing or invalid internal secret")
+    return None
 
 
 async def _is_already_processed(redis, parcel_hash: str) -> bool:
@@ -58,7 +67,7 @@ async def _is_already_processed(redis, parcel_hash: str) -> bool:
 
 async def _mark_processed(redis, parcel_hash: str) -> None:
     key = f"soil:ingested:{parcel_hash}"
-    await redis.set(key, datetime.now(timezone.utc).isoformat(), ex=SOIL_INGEST_TTL)
+    await redis.set(key, datetime.now(UTC).isoformat(), ex=SOIL_INGEST_TTL)
 
 
 def _expand_geometry(geometry: dict, buffer_m: float) -> dict:
@@ -105,8 +114,13 @@ expand_geometry = _expand_geometry
 
 @router.post("/webhooks/orion")
 @limiter.exempt
-async def orion_webhook(request: Request):
-    _validate_webhook_secret(request)
+async def orion_webhook(
+    request: Request,
+    x_internal_secret: str | None = Header(None, alias="X-Internal-Service-Secret"),
+):
+    reject = _reject_unauthenticated_notify(x_internal_secret)
+    if reject:
+        raise reject
     body = await request.json()
 
     subscription_id = body.get("subscriptionId", "")
@@ -166,7 +180,15 @@ async def orion_webhook(request: Request):
 
 
 @router.post("/subscriptions/register")
-async def register_subscription(auth: AuthContext = require_auth(roles=["GestorAgricola", "Administrador"])):
+async def register_subscription(auth: AuthContext = _REQUIRE_AUTH_ADMIN):
+    endpoint = {
+        "uri": "http://soil-module-service:8000/v1/soil/webhooks/orion",
+        "accept": "application/json",
+    }
+    if INTERNAL_SERVICE_SECRET:
+        endpoint["receiverInfo"] = [
+            {"key": "X-Internal-Service-Secret", "value": INTERNAL_SERVICE_SECRET}
+        ]
     subscription = {
         "id": SUBSCRIPTION_ID,
         "type": "Subscription",
@@ -175,19 +197,15 @@ async def register_subscription(auth: AuthContext = require_auth(roles=["GestorA
         "notification": {
             "attributes": ["location", "dateModified"],
             "format": "normalized",
-            "endpoint": {
-                "uri": "http://soil-module-service:8000/v1/soil/webhooks/orion",
-                "accept": "application/json",
-            },
+            "endpoint": endpoint,
         },
-        "@context": [CONTEXT_URL],
     }
 
     async with OrionClient(auth.tenant_id) as orion:
         try:
-            await orion.create_entity(subscription)
+            await orion.create_subscription(subscription)
             return {"status": "registered", "subscriptionId": SUBSCRIPTION_ID}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — Orion may raise various errors; narrow if OrionClient propagates typed exceptions
             if "already exists" in str(e).lower():
                 return {"status": "already_registered", "subscriptionId": SUBSCRIPTION_ID}
             raise HTTPException(status_code=500, detail=str(e))
@@ -195,10 +213,10 @@ async def register_subscription(auth: AuthContext = require_auth(roles=["GestorA
 
 @router.get("/subscriptions/status")
 @limiter.exempt
-async def subscription_status(auth: AuthContext = require_auth(roles=["GestorAgricola", "Administrador"])):
+async def subscription_status(auth: AuthContext = _REQUIRE_AUTH_ADMIN):
     async with OrionClient(auth.tenant_id) as orion:
         try:
             entity = await orion.get_subscription(SUBSCRIPTION_ID)
             return {"status": "active", "subscription": entity}
-        except Exception:
+        except Exception:  # noqa: BLE001 — subscription may not exist; return not_found gracefully
             return {"status": "not_found", "subscriptionId": SUBSCRIPTION_ID}

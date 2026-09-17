@@ -1,10 +1,9 @@
 """Tests for GET /v1/soil/parcel/{id}/compaction-susceptibility endpoint."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
-
 from nkz_soil.api.main import create_app
 
 

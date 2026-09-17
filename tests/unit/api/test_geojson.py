@@ -1,5 +1,6 @@
 from nkz_soil.api.geojson import (
-    is_allowed_attribute, build_parcel_featurecollection,
+    build_parcel_featurecollection,
+    is_allowed_attribute,
 )
 
 

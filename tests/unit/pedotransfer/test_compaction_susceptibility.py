@@ -1,10 +1,9 @@
 """Tests for compaction_susceptibility_score pedotransfer."""
 
 from nkz_soil.pedotransfer.compaction_susceptibility import (
-    compaction_susceptibility_score,
     TEXTURE_SUSCEPTIBILITY,
+    compaction_susceptibility_score,
 )
-
 
 # ── Texture baseline tests (all 12 USDA classes) ──
 

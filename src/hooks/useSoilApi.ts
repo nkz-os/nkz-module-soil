@@ -1,38 +1,52 @@
+import { useMemo } from 'react';
 import { useAPI } from '@nekazari/module-kit';
 import { parcelApiPath } from '../lib/normalizeParcelId';
+import { activateSoilForParcel } from '../services/moduleActivation';
 
-interface SoilSummary {
-  horizons: Array<{
-    depthFrom: number;
-    depthTo: number;
-    sand?: number;
-    silt?: number;
-    clay?: number;
-    organicCarbon?: number;
-    bulkDensity?: number;
-    ph?: number;
-    ksatSaturated?: number;
-    availableWaterCapacity?: number;
-    hydrologicGroup?: string;
-    penetrationResistance?: number;
-  }>;
+// Flat horizon shape as returned by GET /parcel/{id}/summary (already
+// unwrapped from NGSI-LD Property `{ type, value }` wrappers server-side —
+// see backend/src/nkz_soil/api/routes/reading.py::parcel_summary). Fields
+// mirror what the ingest worker writes per horizon
+// (backend/src/nkz_soil/workers/ingest.py).
+export interface SoilHorizon {
+  depthFrom: number;
+  depthTo: number;
+  sand?: number;
+  silt?: number;
+  clay?: number;
+  organicCarbon?: number;
+  bulkDensity?: number;
+  ph?: number;
+  ksatSaturated?: number;
+  availableWaterCapacity?: number;
+  fieldCapacity?: number;
+  wiltingPoint?: number;
+  hydrologicGroup?: string;
+  usdaTextureClass?: string;
+  penetrationResistance?: number;
+}
+
+export interface SoilCompactionEntry {
+  depthFrom: number;
+  depthTo: number;
+  value: number;
+  classification: string;
+}
+
+export interface SoilSummary {
+  horizons: SoilHorizon[];
   dataSource: string;
   uncertainty: number;
-  relativeCompaction?: Array<{
-    depthFrom: number;
-    depthTo: number;
-    value: number;
-    classification: string;
-  }>;
+  relativeCompaction?: SoilCompactionEntry[];
 }
 
 const SOIL_API_BASE = '/api/soil';
 
-export function useSoilApi() {
-  const api = useAPI(SOIL_API_BASE);
+type ApiClient = { get: <T = unknown>(path: string) => Promise<T>; post: <T = unknown>(path: string, body?: unknown) => Promise<T> };
 
+/** Pure builder — kept separate from the hook so it is unit-testable without a React render. */
+export function buildSoilApi(api: ApiClient) {
   return {
-    // Expose raw get/post for consumers that need generic HTTP access
     get: api.get.bind(api),
     post: api.post.bind(api),
 
@@ -59,8 +73,10 @@ export function useSoilApi() {
     uploadCsv: (formData: FormData) =>
       api.post('/sampling-points/batch', formData),
 
-    forceIngest: (parcelId: string) =>
-      api.post(`/parcel/${parcelApiPath(parcelId)}/ingest`, {}),
+    // Routes through entity-manager's activation gate (records real
+    // quota usage) instead of calling soil's own /ingest endpoint
+    // directly — that direct call bypassed tenant_parcel_modules entirely.
+    forceIngest: (parcelId: string) => activateSoilForParcel(parcelId),
 
     getMetrics: () =>
       api.get<{ providers: Array<{
@@ -72,4 +88,13 @@ export function useSoilApi() {
         total_errors: number;
       }> }>('/metrics'),
   };
+}
+
+export function useSoilApi() {
+  const api = useAPI(SOIL_API_BASE);
+
+  // Memoize on the (stable) api client: consumers put this object in useEffect
+  // dependency arrays (ModulePage summary fetch), so a fresh object each render
+  // would loop renders/fetches forever.
+  return useMemo(() => buildSoilApi(api), [api]);
 }

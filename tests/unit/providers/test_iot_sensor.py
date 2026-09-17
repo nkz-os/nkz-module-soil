@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, patch
+
+import pytest
+from nkz_soil.models.domain import DepthInterval, SoilProperty
 from nkz_soil.providers.iot_sensor import IotSensorProvider
-from nkz_soil.models.domain import SoilProperty, DepthInterval
 
 
 @pytest.fixture

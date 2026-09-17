@@ -4,8 +4,10 @@ All Properties use TaggedProperty which carries provenance sub-properties
 (providedBy, license, observedAt, confidenceInterval, derivedBy).
 """
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -62,6 +64,7 @@ class AgriSoilExtended:
     hydrologicGroup: TaggedProperty | None = None
     parcelVersionId: TaggedProperty | None = None
     relativeCompaction: TaggedProperty | None = None
+    dataSource: str | None = None
     type: str = "AgriSoilExtended"
 
     def to_ngsi(self) -> dict:
@@ -80,6 +83,8 @@ class AgriSoilExtended:
             v: TaggedProperty | None = getattr(self, attr)
             if v is not None:
                 out[attr] = v.to_ngsi()
+        if self.dataSource:
+            out["dataSource"] = {"type": "Property", "value": self.dataSource}
         return out
 
 

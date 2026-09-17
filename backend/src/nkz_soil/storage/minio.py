@@ -1,5 +1,6 @@
 import boto3
-from nkz_soil.config import MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY
+
+from nkz_soil.config import MINIO_ACCESS_KEY, MINIO_ENDPOINT, MINIO_SECRET_KEY
 
 
 def get_minio_client():

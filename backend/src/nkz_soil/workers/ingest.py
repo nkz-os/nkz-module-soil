@@ -8,12 +8,11 @@ from arq.connections import RedisSettings
 from arq.cron import CronJob
 
 from nkz_soil.config import REDIS_URL
-from nkz_soil.workers.water_budget import compute_water_budgets
 from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
-from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.compaction_susceptibility import compaction_susceptibility_score
+from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
@@ -31,6 +30,7 @@ from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.metrics import metrics
 from nkz_soil.providers.soilgrids import SoilGridsProvider
 from nkz_soil.storage.orion import OrionClient
+from nkz_soil.workers.water_budget import compute_water_budgets
 
 _PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
 
@@ -139,6 +139,17 @@ def _winner_source_per_attr(merged_attrs: dict, results: list[ProviderResult]) -
     return winners
 
 
+def _highest_priority_source(results: list[ProviderResult]) -> str | None:
+    """The overall winning provider for this ingest: whichever contributed
+    the highest-priority result. Distinct from per-attribute winners (a
+    single horizon can blend multiple providers) — this answers the
+    coarser "who mainly supplied this parcel's soil data" question that
+    `dataSource` in the API response represents."""
+    if not results:
+        return None
+    return max(results, key=lambda r: r.priority).source_tag
+
+
 def build_agri_soil_extended(
     parcel_id: str,
     location: dict,
@@ -147,6 +158,14 @@ def build_agri_soil_extended(
     parcel_version: str,
 ) -> AgriSoilExtended:
     """Build an AgriSoilExtended entity tagging horizons with winner-takes-provenance."""
+    # `_winner_source_per_attr({"horizons": True}, ...)` looks like it can never match
+    # when read in isolation (no provider emits an attribute literally named "horizons").
+    # In production it always matches: `legacy_as_provider_results` (built in
+    # ingest_parcel) synthesizes every legacy SoilDataResult as
+    # attributes={"horizons": True} precisely so this lookup succeeds and
+    # `winners["horizons"]` gets populated. It only looks dead-code-unreachable when
+    # this function is unit-tested in isolation with hand-built ProviderResult objects
+    # that use real attribute names (sand, clay, ph, ...) instead.
     winners = _winner_source_per_attr({"horizons": True}, results)
     hw = winners.get("horizons", {})
     return AgriSoilExtended(
@@ -160,7 +179,35 @@ def build_agri_soil_extended(
             observed_at=hw.get("observed_at"),
         ),
         parcelVersionId=TaggedProperty(value=parcel_version),
+        dataSource=_highest_priority_source(results),
     )
+
+
+def _legacy_results_to_provider_results(all_results: list) -> list[ProviderResult]:
+    """Synthesize ProviderResult for provenance tracking from legacy SoilDataResult
+    providers, so the winner election has coverage. Each legacy result contributes
+    a horizons-keyed entry (see `build_agri_soil_extended`'s comment for why that
+    matters).
+
+    Priority is read from the result's own `.priority` attribute — already stamped
+    with the provider's real, correct priority (`ingest_parcel` sets
+    `result.priority = provider.priority` right after fetch/cache-read) — rather than
+    re-derived from `PROVIDER_PRIORITIES` by provider-name string. That dict's keys
+    don't match every registered provider's actual `.name`: `LucasProvider.name`
+    is `"LUCAS"` (dict has lowercase `"lucas"`), and `LucasTextureRasterProvider`
+    (`"LUCAS-Texture"`) / `EsdbRasterProvider` (`"ESDB-Raster"`) have no matching key
+    at all — all 3 would silently fall back to priority 0 via `.get(r.provider, 0)`.
+    """
+    return [
+        ProviderResult(
+            priority=r.priority,
+            attributes={"horizons": True},
+            source_tag=r.provider,
+            license=r.attribution or "unknown",
+        )
+        for r in all_results
+        if not isinstance(r, ProviderResult) and hasattr(r, "provider")
+    ]
 
 
 async def startup(ctx: dict) -> None:
@@ -245,7 +292,7 @@ async def ingest_parcel(
             await cache.set(provider.name, geometry, ALL_PROPERTIES, STANDARD_DEPTHS, result)
             await circuit_breaker.record_success(provider.name)
             metrics.record_fetch(provider.name, duration_ms, from_cache=False)
-        except Exception:
+        except Exception:  # noqa: BLE001 — provider fetch may raise any error; circuit breaker handles it
             await circuit_breaker.record_failure(provider.name)
             metrics.record_error(provider.name)
             continue
@@ -265,17 +312,7 @@ async def ingest_parcel(
     ]
 
     # Synthesize ProviderResult for provenance tracking from legacy SoilDataResult providers.
-    # Each legacy result contributes a horizons-keyed entry so the winner election has coverage.
-    legacy_as_provider_results = [
-        ProviderResult(
-            priority=PROVIDER_PRIORITIES.get(r.provider, 0),
-            attributes={"horizons": True},
-            source_tag=r.provider,
-            license=r.attribution or "unknown",
-        )
-        for r in all_results
-        if not isinstance(r, ProviderResult) and hasattr(r, "provider")
-    ]
+    legacy_as_provider_results = _legacy_results_to_provider_results(all_results)
     all_provider_results = provider_results + legacy_as_provider_results
 
     entity = build_agri_soil_extended(
@@ -315,11 +352,14 @@ async def ingest_parcel(
 
     entity_id = entity["id"]
     async with OrionClient(tenant_id) as orion:
-        existing = await orion.query_entities(type="AgriSoilExtended")
-        existing_match = [e for e in existing if e.get("id") == entity_id]
+        existing = await orion.get_entity(entity_id)
 
-        if existing_match:
-            await orion.patch_entity(entity_id, {
+        if existing is not None:
+            # append_entity_attrs (POST /attrs), not patch_entity (PATCH
+            # /attrs) — PATCH only updates attributes the entity already
+            # has; a field introduced after the entity was first created
+            # (e.g. dataSource) would silently never persist on re-ingest.
+            await orion.append_entity_attrs(entity_id, {
                 k: v for k, v in entity.items()
                 if k not in ("id", "type", "@context")
             })
@@ -403,8 +443,8 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
                 and h.clay is not None
             ):
                 from nkz_soil.pedotransfer.relative_compaction import (
-                    textural_class,
                     REFERENCE_BULK_DENSITY,
+                    textural_class,
                 )
                 tex = textural_class(h.sand, h.silt, h.clay)
                 bd_ref = REFERENCE_BULK_DENSITY.get(tex)
@@ -492,8 +532,9 @@ def _aggregate_uncertainty(results: list) -> float:
 
 async def backfill_parcels_without_soil(ctx: dict) -> None:
     """Cada 6h: detecta parcelas sin AgriSoilExtended y las ingiere."""
-    import asyncpg
     import logging
+
+    import asyncpg
     from arq.connections import ArqRedis
 
     logger = logging.getLogger(__name__)
@@ -513,7 +554,7 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
             )
             await conn.close()
             tenants = [r["tenant_id"] for r in rows]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — DB connection may fail for many reasons; fallback to env
             logger.warning("Backfill soil: DB query failed (%s), falling back to env", e)
 
     if not tenants:
@@ -532,8 +573,8 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
                     parcels = await orion.query_entities(type="AgriParcel")
                     if parcels:
                         tenants.append(guess)
-            except Exception:
-                pass
+            except Exception:  # noqa: BLE001 — tenant guess may fail; skip and try next
+                logger.debug("Backfill soil: tenant guess %s failed, trying next", guess)
         logger.info("Backfill soil: discovered tenants from Orion: %s", tenants)
     logger.info("Backfill soil: %d tenants with soil module enabled", len(tenants))
 
@@ -577,7 +618,7 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
                 )
             total_enqueued += enqueued
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — tenant processing may fail for various reasons; log and continue
             logger.error("Backfill soil: error processing %s (%s)", tenant_id, e)
 
     logger.info("Backfill soil: done — %d total parcels enqueued", total_enqueued)
@@ -594,6 +635,7 @@ async def reap_stuck_jobs(ctx: dict) -> None:
     failed so they don't block the queue indefinitely.
     """
     import logging
+
     from arq.connections import ArqRedis
 
     logger = logging.getLogger(__name__)
@@ -673,8 +715,13 @@ def _parse_redis_url(url: str) -> RedisSettings:
 
 
 class WorkerSettings:
-    functions = [ingest_parcel, compute_water_budgets, backfill_parcels_without_soil]
-    cron_jobs = [
+    functions: list = [ingest_parcel, compute_water_budgets, backfill_parcels_without_soil]  # noqa: RUF012
+    # Heartbeat the k8s liveness probe reads via `arq ... --check`. arq's default is
+    # 3600s, which would only catch a hang an hour after it started. 30s is safe
+    # because every blocking call (boto3 + rasterio in the raster providers) runs in
+    # a worker thread, so the event loop stays free to refresh the key.
+    health_check_interval: int = 30
+    cron_jobs: list = [  # noqa: RUF012
         CronJob(
             name="backfill_soil",
             coroutine=backfill_parcels_without_soil,

@@ -14,10 +14,12 @@ not published in the 2018 SOIL bundle. Texture columns (sand/silt/clay) are
 already available per-point on lucas_topsoil_2018.
 """
 from __future__ import annotations
-from pathlib import Path
-import pandas as pd
-from nkz_soil.storage.pg import get_pool
 
+from pathlib import Path
+
+import pandas as pd
+
+from nkz_soil.storage.pg import get_pool
 
 _BD_UPSERT = """
 INSERT INTO soil_module.lucas_bulk_density_2018

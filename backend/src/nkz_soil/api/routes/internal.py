@@ -45,25 +45,26 @@ async def setup_parcel(request: Request):
     Idempotent: uses same dedup hash as the Orion webhook.
 
     Headers: X-Internal-Service-Secret (required)
-    Body: { parcelId, tenantId, geometry? }
+    Body: { parcel_id, tenant_id, geometry? }
     """
     _validate_internal_secret(request)
 
     body = await request.json()
-    parcel_id = body.get("parcelId", "").strip()
-    tenant_id = body.get("tenantId", "").strip()
+    parcel_id = (body.get("parcel_id") or "").strip()
+    tenant_id = (body.get("tenant_id") or "").strip()
     geometry = body.get("geometry") or {}
 
     if not parcel_id or not tenant_id:
-        raise HTTPException(status_code=422, detail="parcelId and tenantId are required")
+        raise HTTPException(status_code=422, detail="parcel_id and tenant_id are required")
 
-    # If no geometry provided, resolve from Orion
+    # If no geometry provided, resolve from Orion. `id` is not a queryable
+    # attribute in NGSI-LD's `q` grammar — a `q='id=="..."'` filter always
+    # returns zero results — so fetch the entity directly by id instead.
     if not geometry:
         async with OrionClient(tenant_id) as orion:
-            q = f'id=="{_parcel_urn(parcel_id)}"'
-            parcels = await orion.query_entities(type="AgriParcel", q=q, limit=1)
-            if parcels:
-                geometry = parcels[0].get("location", {}).get("value", {})
+            entity = await orion.get_entity(_parcel_urn(parcel_id))
+            if entity:
+                geometry = entity.get("location", {}).get("value", {})
         if not geometry:
             raise HTTPException(
                 status_code=404,

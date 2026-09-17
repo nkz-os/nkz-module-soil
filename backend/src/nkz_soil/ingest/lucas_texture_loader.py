@@ -7,6 +7,7 @@ NO-redistribution: this catalog only points at the rasters; values are served
 solely as derived/aggregated outputs by LucasTextureRasterProvider.
 """
 from __future__ import annotations
+
 import os
 from pathlib import PurePosixPath
 
@@ -76,7 +77,7 @@ async def catalog_lucas_texture(
                 w, s, e, n = transform_bounds(src_crs, _TARGET_CRS,
                                               b.left, b.bottom, b.right, b.top, densify_pts=21)
                 wkt = _bbox_wkt(w, s, e, n)
-                res = int(round(abs(ds.transform[0])))
+                res = round(abs(ds.transform[0]))
                 nodata = float(ds.nodata) if ds.nodata is not None else None
             async with pool.acquire() as conn:
                 await conn.execute(_UPSERT, variable, storage_uri, wkt, src_crs, res, nodata)

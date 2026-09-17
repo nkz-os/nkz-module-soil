@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import asyncio
 import os
 from urllib.parse import urlparse
 
@@ -6,7 +8,7 @@ import boto3
 from rasterio.io import MemoryFile
 from rasterio.warp import transform as warp_transform
 
-from nkz_soil.models.domain import SoilDataResult, Horizon
+from nkz_soil.models.domain import Horizon, SoilDataResult
 from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.storage.pg import get_pool
 
@@ -77,10 +79,7 @@ class EsdbRasterProvider:
             field = _VAR_TO_HORIZON.get(r["variable"].upper())
             if not field:
                 continue
-            uri = urlparse(r["storage_uri"])
-            body = s3.get_object(Bucket=uri.netloc, Key=uri.path.lstrip("/"))["Body"].read()
-            with MemoryFile(body) as mem, mem.open() as ds:
-                v = _sample(ds, lon, lat)
+            v = await asyncio.to_thread(self._download_and_sample, s3, r["storage_uri"], lon, lat)
             if v is not None:
                 topvals[field] = round(v, 3)
         if not topvals:
@@ -95,6 +94,18 @@ class EsdbRasterProvider:
             attribution="Panagos et al. 2022 (ESDBv2 Raster Library)",
             license="JRC-ESDB-Raster-Attribution", redistributable=True, priority=self.priority,
         )
+
+    def _download_and_sample(self, s3, storage_uri: str, lon: float, lat: float) -> float | None:
+        """Blocking: boto3 download + rasterio decode. Runs in a worker thread.
+
+        Called via asyncio.to_thread so a raster fetch cannot stall the arq event
+        loop (which would freeze the health heartbeat and every other job).
+        Mirrors SoilGridsProvider._read_cog_pixel.
+        """
+        uri = urlparse(storage_uri)
+        body = s3.get_object(Bucket=uri.netloc, Key=uri.path.lstrip("/"))["Body"].read()
+        with MemoryFile(body) as mem, mem.open() as ds:
+            return _sample(ds, lon, lat)
 
     async def health(self) -> dict:
         pool = await get_pool()

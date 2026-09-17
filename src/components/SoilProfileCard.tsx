@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useViewer } from '@nekazari/sdk';
 import { useSoilApi } from '../hooks/useSoilApi';
 import { soilLayerColor } from '../lib/soilLayerColor';
 
@@ -40,9 +41,14 @@ interface SoilProfileCardProps {
  * Designed for the parcel viewer context-panel slot.  Shows "No soil data"
  * placeholder when the parcel has no AgriSoilExtended entity yet.
  */
-export function SoilProfileCard({ entityId, maxDepth = 100 }: SoilProfileCardProps) {
+export function SoilProfileCard({ entityId: entityIdProp, maxDepth = 100 }: SoilProfileCardProps) {
   const { t } = useTranslation('soil');
   const api = useSoilApi();
+  // ModulePage passes entityId explicitly; the viewer's context-panel slot
+  // never passes flat props at all (only additionalProps={{ entityData }}),
+  // so fall back to the viewer's own selection in that case.
+  const { selectedEntityId } = useViewer();
+  const entityId = entityIdProp ?? selectedEntityId;
   const [horizons, setHorizons] = useState<HorizonData[] | null>(null);
   const [error, setError] = useState(false);
 

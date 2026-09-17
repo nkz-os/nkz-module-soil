@@ -1,7 +1,9 @@
 """Async PostgreSQL/PostGIS connection pool for soil_module schema."""
 from __future__ import annotations
+
 import os
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+
 import asyncpg
 
 _POOL: asyncpg.Pool | None = None

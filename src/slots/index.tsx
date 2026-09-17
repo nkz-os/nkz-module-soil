@@ -30,7 +30,7 @@ export const moduleSlots: ModuleViewerSlots = {
   ],
   'layer-toggle': [
     { id: 'soil-layer-toggle', moduleId: MODULE_ID, component: 'SoilLayerToggle', priority: 20,
-      localComponent: SoilLayerToggle, showWhen: { entityType: ['AgriParcel'] } },
+      localComponent: SoilLayerToggle },
   ],
   'context-panel': [
     { id: 'soil-context-panel', moduleId: MODULE_ID, component: 'SoilPanel', priority: 10, localComponent: SoilPanel },
