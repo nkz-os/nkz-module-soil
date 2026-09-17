@@ -108,7 +108,7 @@ export function SoilPanel() {
 
         <Link
           to={`/module/soil?parcel=${entityId}`}
-          className="text-nkz-xs text-nkz-primary hover:underline block"
+          className="text-nkz-xs text-nkz-accent-base hover:underline block"
         >
           {t('viewDetails')} \u2192
         </Link>

@@ -165,7 +165,7 @@ export function PenetrometerForm({ parcelId }: Props) {
                     />
                     <button
                         onClick={useGpsLocation}
-                        className="px-2 py-1 border border-nkz-border rounded-nkz-sm text-nkz-primary"
+                        className="px-2 py-1 border border-nkz-border rounded-nkz-sm text-nkz-accent-base"
                         title={t('penetrometer.useGps', 'Use GPS')}
                     >
                         📍
@@ -174,7 +174,7 @@ export function PenetrometerForm({ parcelId }: Props) {
                 <button
                     onClick={addReading}
                     disabled={loading || !resistance}
-                    className="w-full py-1 bg-nkz-primary text-white rounded-nkz-sm disabled:opacity-50"
+                    className="w-full py-1 bg-nkz-accent-base text-white rounded-nkz-sm disabled:opacity-50"
                 >
                     {loading ? '...' : t('penetrometer.add', 'Add Reading')}
                 </button>

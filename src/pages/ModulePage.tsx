@@ -72,7 +72,7 @@ function TextureTriangle({ sand, silt, clay, textureClass }: {
         <text x="0" y="90" textAnchor="start" className="fill-nkz-muted" fontSize="5">Arcilla</text>
         <text x="100" y="90" textAnchor="end" className="fill-nkz-muted" fontSize="5">Limo</text>
         {hasFractions && (
-          <circle cx={x * 90 + 5} cy={y * 80 + 5} r="3" className="fill-nkz-primary" />
+          <circle cx={x * 90 + 5} cy={y * 80 + 5} r="3" className="fill-nkz-accent-base" />
         )}
       </svg>
       <span className="text-nkz-xs text-nkz-muted mt-1">{textureClass || '—'}</span>
@@ -108,7 +108,7 @@ function RefreshSoilButton({ parcelId }: { parcelId: string }) {
     <button
       onClick={onClick}
       disabled={state === 'busy' || !parcelId}
-      className="px-3 py-1.5 text-nkz-xs rounded-nkz-sm border border-nkz-border hover:border-nkz-primary disabled:opacity-50"
+      className="px-3 py-1.5 text-nkz-xs rounded-nkz-sm border border-nkz-border hover:border-nkz-accent-base disabled:opacity-50"
     >
       {label}
     </button>
@@ -148,8 +148,8 @@ export default function ModulePage() {
               onClick={() => setActiveTab(tab.id)}
               className={`px-4 py-2 text-nkz-sm border-b-2 transition-colors ${
                 activeTab === tab.id
-                  ? 'border-nkz-primary text-nkz-primary'
-                  : 'border-transparent text-nkz-muted hover:text-nkz-text'
+                  ? 'border-nkz-accent-base text-nkz-accent-base'
+                  : 'border-transparent text-nkz-muted hover:text-nkz-text-primary'
               }`}
             >
               {tab.label}
@@ -310,8 +310,8 @@ function DashboardTab() {
                   onClick={() => handleSelectParcel(p.parcelId)}
                   className={`text-left p-4 rounded-nkz-md border transition-colors ${
                     selectedParcel === p.parcelId
-                      ? 'border-nkz-primary bg-nkz-primary/5'
-                      : 'border-nkz-border hover:border-nkz-primary/50'
+                      ? 'border-nkz-accent-base bg-nkz-accent-base/5'
+                      : 'border-nkz-border hover:border-nkz-accent-base/50'
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -641,7 +641,7 @@ function ManualSamplingTab() {
 
       <button
         onClick={handleSubmit}
-        className="mt-4 px-4 py-2 bg-nkz-primary text-white rounded-nkz-sm text-nkz-sm hover:bg-nkz-primary/90 transition-colors"
+        className="mt-4 px-4 py-2 bg-nkz-accent-base text-white rounded-nkz-sm text-nkz-sm hover:bg-nkz-accent-base/90 transition-colors"
       >
         {t('submit')}
       </button>
@@ -730,7 +730,7 @@ function CsvUploadTab() {
 
       <div
         className={`border-2 border-dashed rounded-nkz-md p-8 text-center transition-colors ${
-          uploading ? 'border-nkz-primary/50 bg-nkz-primary/5' : 'border-nkz-border'
+          uploading ? 'border-nkz-accent-base/50 bg-nkz-accent-base/5' : 'border-nkz-border'
         }`}
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
@@ -797,7 +797,7 @@ function HistoryTab() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-nkz-lg font-medium">{t('tabs.history')}</h2>
           <button onClick={() => setSortDesc(d => !d)}
-                  className="text-nkz-xs text-nkz-muted hover:text-nkz-primary">
+                  className="text-nkz-xs text-nkz-muted hover:text-nkz-accent-base">
             {sortDesc ? '↓ newest' : '↑ oldest'}
           </button>
         </div>
@@ -817,7 +817,7 @@ function HistoryTab() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-nkz-lg font-medium">{t('history.surveys')}</h2>
             <button onClick={() => setSortDesc(d => !d)}
-                    className="text-nkz-xs text-nkz-muted hover:text-nkz-primary">
+                    className="text-nkz-xs text-nkz-muted hover:text-nkz-accent-base">
               {sortDesc ? '↓ newest' : '↑ oldest'}
             </button>
           </div>
@@ -855,7 +855,7 @@ function HistoryTab() {
                       >
                         <td className="py-2 pr-4">
                           <span className={`px-2 py-0.5 rounded-nkz-sm text-nkz-xs ${
-                            surveyType?.value === 'lab' ? 'bg-nkz-primary/10 text-nkz-primary' :
+                            surveyType?.value === 'lab' ? 'bg-nkz-accent-base/10 text-nkz-accent-base' :
                             surveyType?.value === 'em' ? 'bg-nkz-warning/10 text-nkz-warning' :
                             surveyType?.value === 'nir' ? 'bg-purple-100 text-purple-700' :
                             'bg-nkz-muted/10 text-nkz-muted'

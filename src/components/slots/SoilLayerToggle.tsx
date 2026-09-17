@@ -48,7 +48,7 @@ export function SoilLayerToggle() {
           <div className="flex gap-2">
             {(['selected', 'all'] as LayerScope[]).map(s => (
               <button key={s} onClick={() => setScope(s)}
-                className={`px-2 py-1 rounded-nkz-sm border ${scope === s ? 'border-nkz-primary text-nkz-primary' : 'border-nkz-border text-nkz-muted'}`}>
+                className={`px-2 py-1 rounded-nkz-sm border ${scope === s ? 'border-nkz-accent-base text-nkz-accent-base' : 'border-nkz-border text-nkz-muted'}`}>
                 {t(`layer.scope.${s}`, s)}
               </button>
             ))}
