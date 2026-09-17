@@ -35,7 +35,7 @@ export const WaterBudgetGauge: React.FC<WaterBudgetGaugeProps> = ({ data, classN
   const clampedLevel = Math.max(0, Math.min(100, waterLevel));
 
   const getColor = (pct: number) => {
-    if (pct >= 50) return 'text-nkz-green-600 bg-nkz-green-500';
+    if (pct >= 50) return 'text-nkz-success bg-nkz-success';
     if (pct >= 25) return 'text-yellow-600 bg-yellow-500';
     return 'text-red-600 bg-red-500';
   };
@@ -82,7 +82,7 @@ export const WaterBudgetGauge: React.FC<WaterBudgetGaugeProps> = ({ data, classN
       {/* Recommendation */}
       {recommendation && (
         <div className={`rounded-lg p-2 text-xs flex items-start gap-2 ${
-          recommendation.shouldIrrigate ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-nkz-green-50 text-nkz-green-700 border border-nkz-green-100'
+          recommendation.shouldIrrigate ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' : 'bg-nkz-success-soft text-nkz-success-strong border border-nkz-success-soft'
         }`}>
           {recommendation.shouldIrrigate ? <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" /> : <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />}
           <div>
