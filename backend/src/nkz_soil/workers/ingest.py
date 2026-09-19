@@ -16,7 +16,6 @@ from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
-from nkz_soil.util.nodata import is_soilgrids_nodata
 from nkz_soil.providers.base import ProviderRegistry, ProviderResult, RedisCircuitBreaker
 from nkz_soil.providers.bgs import BgsProvider
 from nkz_soil.providers.cache import ProviderCache
@@ -31,6 +30,7 @@ from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.metrics import metrics
 from nkz_soil.providers.soilgrids import SoilGridsProvider
 from nkz_soil.storage.orion import OrionClient
+from nkz_soil.util.nodata import is_soilgrids_nodata
 from nkz_soil.workers.water_budget import compute_water_budgets
 
 _PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
