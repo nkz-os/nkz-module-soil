@@ -16,6 +16,7 @@ from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
+from nkz_soil.util.nodata import is_soilgrids_nodata
 from nkz_soil.providers.base import ProviderRegistry, ProviderResult, RedisCircuitBreaker
 from nkz_soil.providers.bgs import BgsProvider
 from nkz_soil.providers.cache import ProviderCache
@@ -388,7 +389,7 @@ def _cascade_merge(results: list, depths: list[DepthInterval]) -> list[EnrichedH
                 continue
             for attr in _MERGE_ATTRS:
                 val = getattr(horizon, attr, None)
-                if val is None:
+                if val is None or is_soilgrids_nodata(val):
                     continue
                 if attr not in merged[key]:           # highest-priority winner (PTF input)
                     merged[key][attr] = val
