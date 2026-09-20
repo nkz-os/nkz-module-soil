@@ -11,11 +11,14 @@ import { SoilProfileCard } from '../components/SoilProfileCard';
 type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
 
 // ─── Types ───────────────────────────────────────────────────────────────
-// SoilHorizon is imported from useSoilApi.ts — it's the flat shape returned
-// by GET /parcel/{id}/summary (backend already unwraps NGSI-LD Property
-// wrappers server-side). AgriSoilEntity below is the *other* shape: the raw
-// NGSI-LD entity as read directly from Orion via useEntities() — attributes
-// there are still `{ type, value }`-wrapped and must go through ngsiValue().
+// SoilHorizon is imported from useSoilApi.ts — horizons are the flat shape
+// returned by GET /parcel/{id}/summary (the backend unwraps NGSI-LD Property
+// wrappers for horizons only). dataSource / uncertainty / relativeCompaction
+// are STILL returned as `{ type, value }`-wrapped (see reading.py), so those
+// must go through ngsiValue() — see the selected-parcel detail block below.
+// AgriSoilEntity below is the *other* shape: the raw NGSI-LD entity as read
+// directly from Orion via useEntities() — attributes there are still
+// `{ type, value }`-wrapped and must go through ngsiValue().
 
 interface CompactionEntry {
   depthFrom: number;
@@ -384,7 +387,9 @@ function DashboardTab() {
         // no id/hasAgriParcel (unlike AgriSoilEntity), so the parcel id is
         // the one already selected, not derived from the summary payload.
         const detailHorizons = sanitizeHorizons(summary.horizons);
-        const compaction = sanitizeCompaction(summary.relativeCompaction ?? []);
+        const compaction = sanitizeCompaction(
+          ngsiValue<CompactionEntry[]>(summary.relativeCompaction) ?? [],
+        );
         const parcelId = selectedParcel;
         return (
         <div className="bg-nkz-surface rounded-nkz-md p-6">

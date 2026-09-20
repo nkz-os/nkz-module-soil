@@ -35,9 +35,11 @@ export interface SoilCompactionEntry {
 
 export interface SoilSummary {
   horizons: SoilHorizon[];
-  dataSource: string;
-  uncertainty: number;
-  relativeCompaction?: SoilCompactionEntry[];
+  // dataSource / uncertainty / relativeCompaction arrive as NGSI-LD Property
+  // wrappers `{ type, value }` (reading.py wraps them; horizons is unwrapped).
+  dataSource: { type: string; value: string };
+  uncertainty: { type: string; value: number };
+  relativeCompaction?: { type: string; value: SoilCompactionEntry[] };
 }
 
 const SOIL_API_BASE = '/api/soil';
