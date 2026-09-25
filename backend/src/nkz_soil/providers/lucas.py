@@ -31,7 +31,7 @@ LIMIT $4;
 # DB column -> Horizon field (None = not mapped to a horizon attribute)
 _COL_TO_HORIZON = {
     "clay_pct": "clay", "sand_pct": "sand", "silt_pct": "silt",
-    "oc_g_kg": "organic_carbon", "ph_h2o": "ph", "ec_ds_m": None,
+    "oc_g_kg": "organic_carbon", "ph_h2o": "ph", "ec_ds_m": "ec",
     "caco3_g_kg": None, "p_mg_kg": None, "n_g_kg": None, "k_mg_kg": None,
     "coarse_pct": "coarse_fragments",
 }

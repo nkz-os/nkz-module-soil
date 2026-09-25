@@ -11,6 +11,7 @@ class SoilProperty(str, Enum):
     BULK_DENSITY = "bulkDensity"
     PH = "ph"
     CEC = "cec"
+    EC = "ec"
     COARSE_FRAGMENTS = "coarseFragments"
     KSAT_SATURATED = "ksatSaturated"
     AVAILABLE_WATER_CAPACITY = "availableWaterCapacity"
@@ -43,6 +44,7 @@ class Horizon:
     bulk_density: float | None = None
     ph: float | None = None
     cec: float | None = None
+    ec: float | None = None
     coarse_fragments: float | None = None
     ksat_saturated: float | None = None
     available_water_capacity: float | None = None

@@ -38,6 +38,8 @@ def test_knn_returns_attributes_from_nearest_point(loaded):
     assert abs(top.sand - 42.0) < 0.01
     # OC stored as 18.5 g/kg in the fixture; provider emits percent (÷10).
     assert abs(top.organic_carbon - 1.85) < 0.01
+    # EC (salinity) comes from the LUCAS `EC` column → ec_ds_m (dS/m).
+    assert abs(top.ec - 0.32) < 0.01
 
 
 def test_knn_returns_none_outside_buffer(loaded):

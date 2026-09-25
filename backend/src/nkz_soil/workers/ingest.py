@@ -54,6 +54,7 @@ STANDARD_PROPERTIES = [
     SoilProperty.BULK_DENSITY,
     SoilProperty.PH,
     SoilProperty.CEC,
+    SoilProperty.EC,
     SoilProperty.COARSE_FRAGMENTS,
 ]
 
@@ -109,6 +110,7 @@ class EnrichedHorizon:
     bulk_density: float | None = None
     ph: float | None = None
     cec: float | None = None
+    ec: float | None = None
     coarse_fragments: float | None = None
     ksat_saturated: float | None = None
     available_water_capacity: float | None = None
@@ -371,7 +373,7 @@ async def ingest_parcel(
 
 
 _MERGE_ATTRS = ["sand", "silt", "clay", "organic_carbon", "bulk_density",
-                "ph", "cec", "coarse_fragments", "penetration_resistance"]
+                "ph", "cec", "ec", "coarse_fragments", "penetration_resistance"]
 
 
 def _cascade_merge(results: list, depths: list[DepthInterval]) -> list[EnrichedHorizon]:
@@ -485,6 +487,7 @@ def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
         "bulkDensity": _emit_raw(horizon, "bulk_density"),
         "ph": _emit_raw(horizon, "ph"),
         "cec": _emit_raw(horizon, "cec"),
+        "ec": _emit_raw(horizon, "ec"),
         "coarseFragments": _emit_raw(horizon, "coarse_fragments"),
         "penetrationResistance": _emit_raw(horizon, "penetration_resistance"),
         # Derived products — always emitted (new works under the license).
