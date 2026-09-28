@@ -236,6 +236,47 @@ async def shutdown(ctx: dict) -> None:
         await cache.close()
 
 
+_GEOMETRY_SIMPLIFY_TOLERANCE_M = 1.0
+
+
+def _simplify_geometry(geometry: dict) -> dict:
+    """Defensively simplify an over-detailed parcel geometry.
+
+    Raw cadastral polygons can carry hundreds of vertices (e.g. 486 for a
+    217 ha parcel), which makes the lab_analysis/iot_sensor Orion geo-queries
+    and the resulting entity payload extremely slow. Reprojects to a local
+    UTM zone so the 1 m tolerance is in metres, then back to WGS84.
+
+    Never raises — returns the original geometry on any failure so a bad
+    geometry can never take down the worker.
+    """
+    if not isinstance(geometry, dict) or geometry.get("type") != "Polygon":
+        return geometry
+    try:
+        from pyproj import Transformer
+        from shapely.geometry import shape
+        from shapely.ops import transform as shapely_transform
+
+        geom = shape(geometry)
+        lon, lat = geom.centroid.x, geom.centroid.y
+        zone = int((lon + 180.0) // 6.0) + 1
+        epsg = 32600 + zone if lat >= 0 else 32700 + zone
+        to_utm = Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
+        to_wgs = Transformer.from_crs(f"EPSG:{epsg}", "EPSG:4326", always_xy=True)
+
+        simplified = shapely_transform(
+            to_wgs.transform,
+            shapely_transform(to_utm.transform, geom).simplify(
+                _GEOMETRY_SIMPLIFY_TOLERANCE_M, preserve_topology=True
+            ),
+        )
+        if simplified.is_empty:
+            return geometry
+        out = simplified.__geo_interface__
+        return out if out.get("type") == "Polygon" else geometry
+    except Exception:  # noqa: BLE001 — defensive simplification must never break ingestion
+        return geometry
+
 
 async def ingest_parcel(
     ctx: dict,
@@ -261,6 +302,10 @@ async def ingest_parcel(
                 geometry = match[0].get("location", {}).get("value", {})
         if not geometry:
             return {"status": "skipped", "reason": "no_geometry", "parcelId": parcel_id}
+
+    # Defensive: collapse over-detailed geometries (raw cadastral polygons)
+    # before any provider geo-query or entity build.
+    geometry = _simplify_geometry(geometry)
 
     all_results = []
     provider_results: list[ProviderResult] = []
