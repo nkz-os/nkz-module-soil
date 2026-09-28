@@ -765,6 +765,11 @@ def _parse_redis_url(url: str) -> RedisSettings:
 
 class WorkerSettings:
     functions: list = [ingest_parcel, compute_water_budgets, backfill_parcels_without_soil]  # noqa: RUF012
+    # Limit concurrency. arq's default (10) lets a backfill burst run 10
+    # ingest_parcel jobs at once; on the 1-CPU limit that saturates the cgroup
+    # and starves the `arq --check` liveness probe (it times out at 15s and
+    # the pod is SIGKILLed, exit 137). 2 keeps the event loop + probe responsive.
+    max_jobs: int = 2
     # Heartbeat the k8s liveness probe reads via `arq ... --check`. arq's default is
     # 3600s, which would only catch a hang an hour after it started. 30s is safe
     # because every blocking call (boto3 + rasterio in the raster providers) runs in
