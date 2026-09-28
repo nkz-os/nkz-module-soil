@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 # SoilGrids / ISRIC common nodata values (Float32 int16 min, legacy sentinels).
-SOILGRIDS_NODATA: tuple[float, ...] = (-9999.0, -3276.8, -3.40282347e38)
+# -32768 is the Int16 nodata used by the raw WebDAV COG tiles (e.g. bdod).
+SOILGRIDS_NODATA: tuple[float, ...] = (-32768.0, -9999.0, -3276.8, -3.40282347e38)
 
 _NUMERIC_HORIZON_KEYS = frozenset({
     "sand", "silt", "clay", "organicCarbon", "ph", "cec", "coarseFragments",

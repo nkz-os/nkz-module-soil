@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 REST_BASE_URL = "https://rest.isric.org/soilgrids/v2.0/properties/query"
 WEBDAV_BASE_URL = "https://files.isric.org/soilgrids/latest/data/"
 
+# Max concurrent remote COG reads in the WebDAV path. The sequential loop made
+# a first-time fetch take ~90s for ~50 COG reads; bounded concurrency keeps
+# files.isric.org polite while cutting the latency to a few seconds.
+_WEBDAV_MAX_CONCURRENCY = 6
+
 RATE_LIMIT_CALLS = 5
 RATE_LIMIT_WINDOW_SEC = 60
 MAX_RETRIES = 3
@@ -59,7 +64,7 @@ UNIT_FACTORS = {
     "silt": 10.0,
     "clay": 10.0,
     "soc": 10.0,
-    "bdod": 1000.0,
+    "bdod": 100.0,
     "phh2o": 10.0,
     "cec": 10.0,
     "cfvo": 10.0,
@@ -129,31 +134,49 @@ class SoilGridsProvider:
             logger.warning("rasterio not available, falling back to REST API")
             return await self._fetch_rest(lon, lat, geometry, properties, depths)
 
-        horizons = []
+        # Build the full list of (depth, property) COG reads, then run them
+        # concurrently under a semaphore instead of the old sequential double
+        # loop (which was the dominant latency in a first-time fetch).
+        reads: list[tuple[DepthInterval, str, str]] = []
         for depth in depths:
-            horizon_data: dict[str, Any] = {
-                "depth_from": depth.depth_from,
-                "depth_to": depth.depth_to,
-            }
-
             for prop in properties:
                 if prop not in PROPERTY_TO_WEBDAV_NAME:
                     continue
                 webdav_name = PROPERTY_TO_WEBDAV_NAME[prop]
                 sg_from, sg_to = _depth_to_soilgrids_range(depth.depth_from, depth.depth_to)
                 cog_url = _build_cog_url(webdav_name, sg_from, sg_to, "mean")
+                reads.append((depth, webdav_name, cog_url))
 
-                try:
-                    value = await asyncio.to_thread(
-                        self._read_cog_pixel, rasterio, cog_url, lon, lat
-                    )
-                    if value is not None and not is_soilgrids_nodata(value):
-                        factor = UNIT_FACTORS.get(webdav_name, 1.0)
-                        horizon_data[self._map_layer_name(webdav_name)] = round(value / factor, 2)
-                except Exception as e:  # noqa: BLE001 — COG read may fail for transient network/IO issues; log and skip
-                    logger.warning("Failed to read COG %s: %s", cog_url, e)
+        sem = asyncio.Semaphore(_WEBDAV_MAX_CONCURRENCY)
 
-            horizons.append(Horizon(**horizon_data))
+        async def read_one(cog_url: str) -> float | None:
+            async with sem:
+                return await asyncio.to_thread(
+                    self._read_cog_pixel, rasterio, cog_url, lon, lat
+                )
+
+        values = await asyncio.gather(
+            *(read_one(cog_url) for (_, _, cog_url) in reads),
+            return_exceptions=True,
+        )
+
+        horizons_by_depth: dict[tuple[int, int], dict[str, Any]] = {}
+        for (depth, webdav_name, cog_url), value in zip(reads, values):
+            key = (depth.depth_from, depth.depth_to)
+            horizon_data = horizons_by_depth.setdefault(
+                key, {"depth_from": key[0], "depth_to": key[1]}
+            )
+            if isinstance(value, BaseException):
+                logger.warning("Failed to read COG %s: %s", cog_url, value)
+                continue
+            if value is None or is_soilgrids_nodata(value):
+                continue
+            factor = UNIT_FACTORS.get(webdav_name, 1.0)
+            horizon_data[self._map_layer_name(webdav_name)] = round(value / factor, 2)
+
+        horizons = [
+            Horizon(**horizons_by_depth[(d.depth_from, d.depth_to)]) for d in depths
+        ]
 
         return SoilDataResult(
             provider=self.name,
