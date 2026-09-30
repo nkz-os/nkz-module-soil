@@ -1,7 +1,9 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+from shapely.geometry import Point, shape
 
 from nkz_soil.models.domain import (
     DepthInterval,
@@ -13,75 +15,40 @@ from nkz_soil.models.domain import (
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
 
+logger = logging.getLogger(__name__)
+
 WFS_URL = "https://idena.navarra.es/ogc/wfs"
 
 SOIL_LAYERS = [
     "IDENA:EDAFOL_Pol_Suelos25m",
     "IDENA:EDAFOL_Pol_REDRurbasa",
-    "IDENA:OCUPAC_Pol_REDRapti",
 ]
 
-TEXTURE_CLASS_TO_SAND = {
-    "arenoso": 85.0,
-    "arena": 90.0,
-    "franco-arenoso": 70.0,
-    "franco": 40.0,
-    "franco-arcilloso": 25.0,
-    "arcilloso": 15.0,
-    "arcilla": 10.0,
-    "limo": 20.0,
-    "franco-limoso": 30.0,
-    "arcillo-limoso": 15.0,
-}
+# Half-side (degrees) of the bbox used to fetch recintos around the parcel
+# point; the recinto that actually contains the point is picked client-side.
+_SEARCH_HALF_DEG = 0.002
 
-TEXTURE_CLASS_TO_SILT = {
-    "arenoso": 5.0,
-    "arena": 5.0,
-    "franco-arenoso": 15.0,
-    "franco": 40.0,
-    "franco-arcilloso": 20.0,
-    "arcilloso": 15.0,
-    "arcilla": 10.0,
-    "limo": 70.0,
-    "franco-limoso": 55.0,
-    "arcillo-limoso": 60.0,
-}
+# Surface horizon only. IDENA's CLASIF_HS1 is the "clase textural del horizonte
+# superficial" (series sheets: Ap, ~0-33 cm); CLASIF_SC1 is the family class of
+# the control section and is too broad to turn into fractions.
+_SURFACE_MAX_DEPTH_CM = 30
 
-TEXTURE_CLASS_TO_CLAY = {
-    "arenoso": 10.0,
-    "arena": 5.0,
-    "franco-arenoso": 15.0,
-    "franco": 20.0,
-    "franco-arcilloso": 55.0,
-    "arcilloso": 70.0,
-    "arcilla": 80.0,
-    "limo": 10.0,
-    "franco-limoso": 15.0,
-    "arcillo-limoso": 25.0,
-}
-
-SOIL_TAXON_TO_PH = {
-    "cambisol": 6.5,
-    "luvisol": 6.0,
-    "regosol": 7.0,
-    "leptosol": 7.5,
-    "fluvisol": 7.2,
-    "calcisol": 8.0,
-    "gleysol": 5.5,
-    "stagnosol": 5.0,
-    "podzol": 4.5,
-}
-
-SOIL_TAXON_TO_OC = {
-    "cambisol": 2.5,
-    "luvisol": 2.0,
-    "regosol": 1.5,
-    "leptosol": 3.0,
-    "fluvisol": 2.8,
-    "calcisol": 1.0,
-    "gleysol": 4.0,
-    "stagnosol": 5.0,
-    "podzol": 6.0,
+# USDA texture class (IDENA Spanish label) -> representative (sand, silt, clay) %
+# inside that class of the USDA texture triangle, so the class re-derives
+# unchanged. Class-level approximation, not a measurement.
+TEXTURE_CLASS_FRACTIONS: dict[str, tuple[float, float, float]] = {
+    "Arenosa": (92.0, 5.0, 3.0),
+    "Arenosa franca": (82.0, 12.0, 6.0),
+    "Franco arenosa": (65.0, 25.0, 10.0),
+    "Franca": (40.0, 40.0, 20.0),
+    "Franco limosa": (20.0, 65.0, 15.0),
+    "Limosa": (7.0, 88.0, 5.0),
+    "Franco arcillo arenosa": (60.0, 13.0, 27.0),
+    "Franco arcillosa": (32.0, 34.0, 34.0),
+    "Franco arcillo limosa": (10.0, 56.0, 34.0),
+    "Arcillo arenosa": (52.0, 6.0, 42.0),
+    "Arcillo limosa": (7.0, 46.0, 47.0),
+    "Arcillosa": (20.0, 20.0, 60.0),
 }
 
 
@@ -101,28 +68,11 @@ class IdenaProvider:
         properties: list[SoilProperty],
         depths: list[DepthInterval],
     ) -> SoilDataResult:
-        lon, lat = self._get_centroid(geometry)
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            params: dict[str, str | int] = {
-                "service": "WFS",
-                "version": "2.0.0",
-                "request": "GetFeature",
-                "typename": ",".join(SOIL_LAYERS),
-                "count": 1,
-                "outputFormat": "application/json",
-                "srsName": "EPSG:4326",
-                "bbox": f"{lon-0.01},{lat-0.01},{lon+0.01},{lat+0.01},EPSG:4326",
-            }
-            resp = await client.get(WFS_URL, params=params)
-            if resp.status_code != 200:
-                return SoilDataResult(
-                    provider=self.name, horizons=[], uncertainty=0.15, geometry=geometry
-                )
-            data = resp.json()
-
-        horizons = self._parse_wfs_features(data, properties, depths)
-
+        lon, lat = self._representative_point(geometry)
+        features = await self._get_features(lon, lat)
+        horizons = self._surface_horizons(
+            self._containing_feature(features, lon, lat), properties, depths
+        )
         return SoilDataResult(
             provider=self.name,
             horizons=horizons,
@@ -131,78 +81,68 @@ class IdenaProvider:
             attribution=self.attribution,
         )
 
-    def _parse_wfs_features(
-        self, data: dict, properties: list[SoilProperty], depths: list[DepthInterval]
+    async def _get_features(self, lon: float, lat: float) -> list[dict]:
+        """Recintos around (lon, lat); IDENA returns lon/lat order in EPSG:4326."""
+        d = _SEARCH_HALF_DEG
+        params: dict[str, str | int] = {
+            "service": "WFS",
+            "version": "2.0.0",
+            "request": "GetFeature",
+            "typename": ",".join(SOIL_LAYERS),
+            "count": 50,
+            "outputFormat": "application/json",
+            "srsName": "EPSG:4326",
+            "bbox": f"{lon - d},{lat - d},{lon + d},{lat + d},EPSG:4326",
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(WFS_URL, params=params)
+        if resp.status_code != 200:
+            logger.warning("IDENA WFS returned %s for (%s, %s)", resp.status_code, lon, lat)
+            return []
+        return resp.json().get("features", [])
+
+    @staticmethod
+    def _containing_feature(features: list[dict], lon: float, lat: float) -> dict | None:
+        point = Point(lon, lat)
+        for feature in features:
+            geom = feature.get("geometry")
+            if geom and shape(geom).covers(point):
+                return feature
+        return None
+
+    def _surface_horizons(
+        self, feature: dict | None, properties: list[SoilProperty], depths: list[DepthInterval]
     ) -> list[Horizon]:
+        if feature is None:
+            return []
+        label = (feature.get("properties", {}).get("CLASIF_HS1") or "").split(",")[0].strip()
+        fractions = TEXTURE_CLASS_FRACTIONS.get(label)
+        if fractions is None:
+            return []
+        sand, silt, clay = fractions
+
         horizons: list[Horizon] = []
-        features = data.get("features", [])
-        if not features:
-            return horizons
-
-        props = features[0].get("properties", {})
-
-        self._extract_field(props, ["SERIE1", "SERIE2", "SERIE3"])
-        geomorf = self._extract_field(props, ["GEOMORF1", "GEOMORF2", "GEOMORF3"])
-        soil_taxon = self._extract_field(props, ["SOILTAXON1", "SOILTAXON2", "SOILTAXON3"])
-        self._extract_field(props, ["CLASIF_SC1", "CLASIF_SC2", "CLASIF_SC3"])
-
-        texture_class = self._infer_texture_from_geomorf(geomorf)
-        sand_val = TEXTURE_CLASS_TO_SAND.get(texture_class.lower() if texture_class else "")
-        silt_val = TEXTURE_CLASS_TO_SILT.get(texture_class.lower() if texture_class else "")
-        clay_val = TEXTURE_CLASS_TO_CLAY.get(texture_class.lower() if texture_class else "")
-        ph_val = SOIL_TAXON_TO_PH.get(soil_taxon.lower() if soil_taxon else "")
-        oc_val = SOIL_TAXON_TO_OC.get(soil_taxon.lower() if soil_taxon else "")
-
         for depth in depths:
+            if depth.depth_to > _SURFACE_MAX_DEPTH_CM:
+                continue
             horizon_data: dict[str, Any] = {
                 "depth_from": depth.depth_from,
                 "depth_to": depth.depth_to,
             }
-            if sand_val is not None and SoilProperty.SAND in properties:
-                horizon_data["sand"] = sand_val
-            if silt_val is not None and SoilProperty.SILT in properties:
-                horizon_data["silt"] = silt_val
-            if clay_val is not None and SoilProperty.CLAY in properties:
-                horizon_data["clay"] = clay_val
-            if ph_val is not None and SoilProperty.PH in properties:
-                horizon_data["ph"] = ph_val
-            if oc_val is not None and SoilProperty.ORGANIC_CARBON in properties:
-                horizon_data["organic_carbon"] = oc_val
+            if SoilProperty.SAND in properties:
+                horizon_data["sand"] = sand
+            if SoilProperty.SILT in properties:
+                horizon_data["silt"] = silt
+            if SoilProperty.CLAY in properties:
+                horizon_data["clay"] = clay
             horizons.append(Horizon(**horizon_data))
-
         return horizons
 
-    def _infer_texture_from_geomorf(self, geomorf: str | None) -> str | None:
-        if not geomorf:
-            return None
-        geomorf_lower = geomorf.lower()
-        if "arena" in geomorf_lower or "sand" in geomorf_lower:
-            return "arena"
-        if "arcilla" in geomorf_lower or "clay" in geomorf_lower:
-            return "arcilla"
-        if "limo" in geomorf_lower or "silt" in geomorf_lower:
-            return "limo"
-        if "franco" in geomorf_lower or "loam" in geomorf_lower:
-            return "franco"
-        return None
-
-    def _extract_field(self, props: dict, candidates: list[str]) -> str | None:
-        for key in candidates:
-            val = props.get(key)
-            if val is not None and str(val).strip():
-                return str(val).strip()
-        return None
-
-    def _get_centroid(self, geometry: dict) -> tuple[float, float]:
-        if geometry.get("type") == "Point":
-            coords = geometry.get("coordinates", [0, 0])
-            return coords[0], coords[1]
-        if geometry.get("type") == "Polygon":
-            coords = geometry.get("coordinates", [[[]]])[0]
-            lon = sum(c[0] for c in coords) / len(coords)
-            lat = sum(c[1] for c in coords) / len(coords)
-            return lon, lat
-        return 0.0, 0.0
+    @staticmethod
+    def _representative_point(geometry: dict) -> tuple[float, float]:
+        """A point guaranteed inside the parcel (Polygon or MultiPolygon)."""
+        point = shape(geometry).representative_point()
+        return point.x, point.y
 
     async def health(self) -> ProviderHealth:
         try:
