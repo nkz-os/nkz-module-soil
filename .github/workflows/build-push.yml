@@ -105,7 +105,9 @@ jobs:
             exit 0
           fi
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
-          wget -q https://dl.min.io/client/mc/release/linux-amd64/mc
+          docker create --name mcbits ghcr.io/nkz-os/mc:RELEASE.2024-11-21T17-21-54Z
+          docker cp mcbits:/usr/bin/mc ./mc
+          docker rm mcbits
           chmod +x mc
           ./mc alias set myminio "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
           ./mc cp -r dist/ "myminio/nekazari-frontend/modules/soil/${SHORT_SHA}/"
