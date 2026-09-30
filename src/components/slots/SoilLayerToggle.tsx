@@ -29,11 +29,23 @@ export function SoilLayerToggle() {
         <input
           type="checkbox"
           checked={visible}
-          onChange={(e) => setVisible(e.target.checked)}
-          disabled={scope === 'selected' && !hasParcel}
+          onChange={(e) => {
+            // Without a selected parcel only the tenant-wide scope can show anything.
+            if (e.target.checked && !hasParcel && scope === 'selected') setScope('all');
+            setVisible(e.target.checked);
+          }}
         />
         <span className="font-medium">{t('layer.title', 'Soil')}</span>
       </label>
+      {/* Scope is always reachable, so the layer can be set up before any parcel is selected. */}
+      <div className="flex gap-2">
+        {(['selected', 'all'] as LayerScope[]).map(s => (
+          <button key={s} onClick={() => setScope(s)}
+            className={`px-2 py-1 rounded-nkz-sm border ${scope === s ? 'border-nkz-accent-base text-nkz-accent-base' : 'border-nkz-border text-nkz-muted'}`}>
+            {t(`layer.scope.${s}`, s)}
+          </button>
+        ))}
+      </div>
       {visible && (
         <div className="space-y-2 pl-1">
           {!hasParcel && scope === 'selected' && (
@@ -45,14 +57,6 @@ export function SoilLayerToggle() {
               <option key={a.id} value={a.id}>{t(`layer.attr.${a.id}`, a.id)}</option>
             ))}
           </select>
-          <div className="flex gap-2">
-            {(['selected', 'all'] as LayerScope[]).map(s => (
-              <button key={s} onClick={() => setScope(s)}
-                className={`px-2 py-1 rounded-nkz-sm border ${scope === s ? 'border-nkz-accent-base text-nkz-accent-base' : 'border-nkz-border text-nkz-muted'}`}>
-                {t(`layer.scope.${s}`, s)}
-              </button>
-            ))}
-          </div>
           <input type="range" min={0.2} max={1} step={0.1} value={opacity}
                  onChange={(e) => setOpacity(Number(e.target.value))} className="w-full" />
 

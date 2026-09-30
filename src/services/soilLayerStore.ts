@@ -16,9 +16,11 @@ export interface SoilLayerState {
 
 let state: SoilLayerState = {
   attribute: 'usdaTextureClass',
-  visible: false,
+  // Visible by default: the host's Layers panel switches the whole module on
+  // and off, so an active module shows its layer straight away.
+  visible: true,
   opacity: 0.7,
-  scope: 'selected',
+  scope: 'all',
   status: 'idle',
 };
 

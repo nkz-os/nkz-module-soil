@@ -22,8 +22,9 @@ export default defineModule({
     priority: 40,
   },
   slots: withModuleProvider(moduleSlots as never) as never,
+  viewer: { defaultActive: false },
   api: { basePath: '/api/soil' },
-  requiredRoles: ['GestorAgricola', 'Administrador'],
+  requiredRoles: ['Farmer', 'TechnicalConsultant', 'TenantAdmin', 'PlatformAdmin'],
   requiredPlan: 'pro',
   i18n,
   data: {
