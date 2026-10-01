@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from arq.connections import RedisSettings
 from arq.cron import CronJob
 
-from nkz_soil.config import REDIS_URL
+from nkz_soil.config import LOG_LEVEL, REDIS_URL
+from nkz_soil.logging_setup import configure_logging
 from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
@@ -214,6 +215,8 @@ def _legacy_results_to_provider_results(all_results: list) -> list[ProviderResul
 
 
 async def startup(ctx: dict) -> None:
+    # arq configures only its own "arq" logger.
+    configure_logging(LOG_LEVEL)
     registry = ProviderRegistry()
     for provider in (
         LabAnalysisProvider(), IotSensorProvider(), IdenaProvider(), IgmeProvider(),
