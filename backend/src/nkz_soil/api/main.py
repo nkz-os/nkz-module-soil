@@ -15,7 +15,8 @@ from nkz_soil.api.routes.reading import router as reading_router
 from nkz_soil.api.routes.subscriptions import router as subscriptions_router
 from nkz_soil.api.routes.water_budget import router as water_budget_router
 from nkz_soil.api.routes.writing import router as writing_router
-from nkz_soil.config import REDIS_URL
+from nkz_soil.config import LOG_LEVEL, REDIS_URL
+from nkz_soil.logging_setup import configure_logging
 from nkz_soil.providers.base import ProviderRegistry
 from nkz_soil.providers.bgs import BgsProvider
 from nkz_soil.providers.esdb_raster import EsdbRasterProvider
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    configure_logging(LOG_LEVEL)
     registry = ProviderRegistry()
     registry.register(LabAnalysisProvider())
     registry.register(IotSensorProvider())
