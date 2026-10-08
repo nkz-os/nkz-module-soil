@@ -26,6 +26,7 @@
               "bulkDensity": {"type": "number", "minimum": 0},
               "fieldCapacity": {"type": "number", "minimum": 0, "maximum": 1},
               "wiltingPoint": {"type": "number", "minimum": 0, "maximum": 1},
+              "saturation": {"type": "number", "minimum": 0, "maximum": 1},
               "availableWaterCapacity": {"type": "number", "minimum": 0},
               "saturatedHydraulicConductivity": {"type": "number", "minimum": 0},
               "ph": {"type": "number", "minimum": 0, "maximum": 14},

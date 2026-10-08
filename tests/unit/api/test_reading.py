@@ -152,3 +152,20 @@ async def test_penetrometer_readings_returns_filtered_points():
 
     # Simple mock asserting the flow works
     assert True  # placeholder — real mock will need OrionClient monkeypatch
+
+
+def test_parcel_summary_exposes_saturation_and_null_for_old_rows(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "horizons": {"value": [
+                {"depthFrom": 0, "depthTo": 5, "fieldCapacity": 0.25, "saturation": 0.45},
+                {"depthFrom": 5, "depthTo": 15, "fieldCapacity": 0.25},  # persisted before saturation existed
+            ]},
+        }
+    ]
+    resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    hs = resp.json()["horizons"]
+    assert hs[0]["saturation"] == 0.45
+    assert "saturation" in hs[1] and hs[1]["saturation"] is None
