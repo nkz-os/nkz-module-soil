@@ -2,6 +2,7 @@
 
 import asyncio
 import contextvars
+import json
 import logging
 from typing import Any
 
@@ -80,14 +81,14 @@ class OrionClient:
                 params: dict[str, str | int] = {"type": type, "limit": limit}
                 if merged_q:
                     params["q"] = merged_q
-                params["georel"] = "near;maxDistance=50"
+                # NGSI-LD: "near" is only defined for a Point; for an area the
+                # relation is "intersects", with the GeoJSON coordinates as-is.
+                params["geometry"] = geometry["type"]
+                params["coordinates"] = json.dumps(coords, separators=(",", ":"))
                 if geometry["type"] == "Point":
-                    params["geometry"] = "Point"
-                    params["coordinates"] = f"[{coords[0]},{coords[1]}]"
-                elif geometry["type"] == "Polygon":
-                    flat = [c for point in coords[0] for c in point]
-                    params["geometry"] = "Polygon"
-                    params["coordinates"] = f"[[{','.join(str(c) for c in flat)}]]"
+                    params["georel"] = "near;maxDistance=50"
+                else:
+                    params["georel"] = "intersects"
                 resp = await self._sdk._client.get(
                     self._sdk._url("/ngsi-ld/v1/entities"),
                     params=params,

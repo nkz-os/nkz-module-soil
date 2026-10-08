@@ -7,6 +7,7 @@ import httpx
 
 try:
     import rasterio
+    from rasterio.warp import transform as warp_transform
     from rasterio.windows import Window
     _HAS_RASTERIO = True
 except ImportError:
@@ -52,7 +53,7 @@ PROPERTY_TO_REST_NAME = {
     SoilProperty.SAND: "sand",
     SoilProperty.SILT: "silt",
     SoilProperty.CLAY: "clay",
-    SoilProperty.ORGANIC_CARBON: "ocd",
+    SoilProperty.ORGANIC_CARBON: "soc",
     SoilProperty.BULK_DENSITY: "bdod",
     SoilProperty.PH: "phh2o",
     SoilProperty.CEC: "cec",
@@ -71,6 +72,11 @@ UNIT_FACTORS = {
     "ocd": 10.0,
     "nitrogen": 10.0,
 }
+
+# Conventional SoilGrids units -> this module's canonical units, applied after
+# the mapped-unit conversion. Organic carbon is canonical in % (as the PTF
+# expects); SoilGrids' conventional unit for soc is g/kg.
+TO_CANONICAL = {"soc": 0.1}
 
 DEPTH_LEVELS = [0, 5, 15, 30, 60, 100, 200]
 
@@ -172,7 +178,8 @@ class SoilGridsProvider:
             if value is None or is_soilgrids_nodata(value):
                 continue
             factor = UNIT_FACTORS.get(webdav_name, 1.0)
-            horizon_data[self._map_layer_name(webdav_name)] = round(value / factor, 2)
+            canonical = value / factor * TO_CANONICAL.get(webdav_name, 1.0)
+            horizon_data[self._map_layer_name(webdav_name)] = round(canonical, 3)
 
         horizons = [
             Horizon(**horizons_by_depth[(d.depth_from, d.depth_to)]) for d in depths
@@ -189,7 +196,12 @@ class SoilGridsProvider:
     def _read_cog_pixel(self, rasterio, cog_url: str, lon: float, lat: float) -> float | None:
         vsi_url = f"/vsicurl/{cog_url}"
         with rasterio.open(vsi_url) as src:
-            row, col = src.index(lon, lat)
+            # The SoilGrids COGs are in Interrupted Goode Homolosine (metres):
+            # indexing them with degrees lands near (0, 0), always NODATA.
+            xs, ys = warp_transform("EPSG:4326", src.crs, [lon], [lat])
+            row, col = src.index(xs[0], ys[0])
+            if not (0 <= row < src.height and 0 <= col < src.width):
+                return None
             window = Window(col, row, 1, 1)
             data = src.read(1, window=window)
             if data.size > 0:
@@ -278,11 +290,12 @@ class SoilGridsProvider:
                         d.get("range", {}).get("top_depth") == depth.depth_from
                         and d.get("range", {}).get("bottom_depth") == depth.depth_to
                     ):
-                        value = d.get("values", {}).get("mean", 0)
-                        unit_factor = layer.get("unit_measure", {}).get("d_factor", 1)
-                        scaled = round(value * unit_factor, 2)
-                        if is_soilgrids_nodata(scaled):
-                            continue
+                        value = d.get("values", {}).get("mean")
+                        if value is None or is_soilgrids_nodata(value):
+                            continue  # masked pixel (water, urban, outside coverage)
+                        # d_factor: mapped units / d_factor = conventional units.
+                        unit_factor = layer.get("unit_measure", {}).get("d_factor", 1) or 1
+                        scaled = round(value / unit_factor * TO_CANONICAL.get(name, 1.0), 3)
                         mapped_name = self._map_layer_name(name)
                         horizon_data[mapped_name] = scaled
             horizons.append(Horizon(**horizon_data))
@@ -300,7 +313,6 @@ class SoilGridsProvider:
             "sand": "sand",
             "silt": "silt",
             "clay": "clay",
-            "ocd": "organic_carbon",
             "bdod": "bulk_density",
             "phh2o": "ph",
             "cec": "cec",

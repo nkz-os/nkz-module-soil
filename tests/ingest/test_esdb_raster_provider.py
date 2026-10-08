@@ -41,7 +41,7 @@ def test_sample_returns_soildataresult_within_bbox(cataloged):
     assert res.priority == 18
     top = res.horizons[0]
     assert top.clay == 42.0
-    assert top.organic_carbon == 42.0
+    assert top.organic_carbon is None  # OC_TOP is a class code, never a %
 
 
 def test_sample_returns_none_outside_all_bboxes(cataloged):
