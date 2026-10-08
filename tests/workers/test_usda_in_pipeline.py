@@ -7,3 +7,15 @@ def test_usda_class_computed_from_winner_fractions_even_when_suppressed():
     out = _horizon_to_dict(_apply_pedotransfer([h])[0])
     assert out["usdaTextureClass"] == "loam"   # derived & emitted even though raw clay is suppressed
     assert out["clay"] is None
+
+
+def test_saturation_carried_through_pedotransfer_and_serialization():
+    h = EnrichedHorizon(depth_from=0, depth_to=5, sand=42.0, silt=33.0, clay=25.0,
+                        organic_carbon=1.5, emit={}, provenance={})
+    out = _horizon_to_dict(_apply_pedotransfer([h])[0])
+    assert out["fieldCapacity"] < out["saturation"] <= 1.0
+
+
+def test_saturation_none_without_pedotransfer_inputs():
+    h = EnrichedHorizon(depth_from=0, depth_to=5, emit={}, provenance={})
+    assert _horizon_to_dict(_apply_pedotransfer([h])[0])["saturation"] is None

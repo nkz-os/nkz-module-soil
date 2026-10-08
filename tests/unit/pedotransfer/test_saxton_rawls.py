@@ -41,3 +41,11 @@ def test_saxton_rawls_ksat_ordering_sand_gt_loam_gt_clay():
     loam = saxton_rawls_2006(sand=40, clay=20, organic_carbon=1.0)["ksat"]
     clay = saxton_rawls_2006(sand=20, clay=55, organic_carbon=1.0)["ksat"]
     assert sand > loam > clay
+
+
+def test_saxton_rawls_returns_saturation_above_field_capacity():
+    """theta_s (cm3/cm3) is exposed and physically ordered: fc < theta_s <= 1."""
+    cases = [(60, 10, 2.0), (40, 20, 1.0), (20, 55, 1.0)]  # sandy loam, loam, clay
+    for sand, clay, oc in cases:
+        r = saxton_rawls_2006(sand=sand, clay=clay, organic_carbon=oc)
+        assert r["field_capacity"] < r["saturation"] <= 1.0, (sand, clay, r)

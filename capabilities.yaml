@@ -64,6 +64,13 @@ publishes:
         sources: [derived-from:clayContent,sandContent,organicCarbon, LUCAS-Texture]
         pedotransfer: SaxtonRawls2006
         entitlement: open
+      - name: saturation
+        unitCode: H51
+        temporal: static
+        spatial: polygon-aggregated
+        sources: [derived-from:clayContent,sandContent,organicCarbon, LUCAS-Texture]
+        pedotransfer: SaxtonRawls2006
+        entitlement: open
       - name: saturatedHydraulicConductivity
         unitCode: F61
         temporal: static

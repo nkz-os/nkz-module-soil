@@ -5,7 +5,8 @@ def saxton_rawls_2006(sand: float, clay: float, organic_carbon: float) -> dict:
     """Saxton & Rawls (2006) pedotransfer functions.
 
     Inputs: sand (%), clay (%), organic_carbon (%)
-    Returns: dict with ksat (mm/h), field_capacity (cm3/cm3), wilting_point (cm3/cm3)
+    Returns: dict with ksat (mm/h), field_capacity (cm3/cm3), wilting_point (cm3/cm3),
+    saturation (cm3/cm3, theta_s)
 
     Follows Saxton & Rawls 2006 (SSSAJ 70:1569-1578) Eqs. 1-5, 15-16, 18.
 
@@ -52,4 +53,5 @@ def saxton_rawls_2006(sand: float, clay: float, organic_carbon: float) -> dict:
         "ksat": round(ksat, 2),
         "field_capacity": round(theta_33, 3),
         "wilting_point": round(theta_1500, 3),
+        "saturation": round(theta_s, 3),
     }

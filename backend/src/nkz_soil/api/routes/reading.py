@@ -40,7 +40,11 @@ async def parcel_summary(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH):
     async with OrionClient(auth.tenant_id) as orion:
         entity = await _first_agri_soil(orion, parcel_id)
         return {
-            "horizons": sanitize_horizons(entity.get("horizons", {}).get("value", [])),
+            # Horizons persisted before `saturation` existed lack the key -> null.
+            "horizons": [
+                {**h, "saturation": h.get("saturation")}
+                for h in sanitize_horizons(entity.get("horizons", {}).get("value", []))
+            ],
             "dataSource": {
                 "type": "Property",
                 "value": _prop_value(entity, "dataSource", ""),
