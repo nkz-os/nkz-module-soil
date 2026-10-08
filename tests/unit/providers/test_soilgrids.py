@@ -133,52 +133,103 @@ async def test_health_ok(provider):
     assert health.name == "soilgrids"
 
 
-def _projected_raster(tmp_path, lon, lat, value):
-    """A small GeoTIFF in a projected CRS (metres) with `value` under (lon, lat)."""
+_CRS = "EPSG:3035"  # any projected CRS: the point must be reprojected
+
+
+def _mosaic(tmp_path, lon, lat, value):
+    """Two 5x5 tiles side by side plus a VRT that stitches them, all local.
+
+    The pixel under (lon, lat) is pixel (2, 2) of the SECOND tile.
+    """
     import numpy as np
     import rasterio
+    from rasterio.crs import CRS
     from rasterio.transform import from_origin
     from rasterio.warp import transform as warp_transform
 
-    xs, ys = warp_transform("EPSG:4326", "EPSG:3035", [lon], [lat])
-    data = np.full((5, 5), -32768, dtype="int16")
-    data[2, 2] = value
-    path = tmp_path / "clay.tif"
-    with rasterio.open(
-        path, "w", driver="GTiff", height=5, width=5, count=1, dtype="int16",
-        crs="EPSG:3035", nodata=-32768,
-        transform=from_origin(xs[0] - 250, ys[0] + 250, 100, 100),
-    ) as dst:
-        dst.write(data, 1)
-    return path
+    xs, ys = warp_transform("EPSG:4326", _CRS, [lon], [lat])
+    x0, y0 = xs[0] - 750, ys[0] + 250  # mosaic origin: 7.5 px left, 2.5 px up
+    (tmp_path / "t").mkdir()
+    for i, name in enumerate(("a", "b")):
+        data = np.full((5, 5), -32768, dtype="int16")
+        if name == "b":
+            data[2, 2] = value
+        with rasterio.open(
+            tmp_path / "t" / f"{name}.tif", "w", driver="GTiff", height=5, width=5, count=1,
+            dtype="int16", crs=_CRS, nodata=-32768,
+            transform=from_origin(x0 + i * 500, y0, 100, 100),
+        ) as dst:
+            dst.write(data, 1)
+    wkt = CRS.from_string(_CRS).to_wkt()
+    src = '<SrcRect xOff="0" yOff="0" xSize="5" ySize="5" />'
+    vrt = (
+        f'<VRTDataset rasterXSize="10" rasterYSize="5"><SRS>{wkt}</SRS>'
+        f"<GeoTransform>{x0}, 100, 0, {y0}, 0, -100</GeoTransform>"
+        '<VRTRasterBand dataType="Int16" band="1">'
+        '<ComplexSource><SourceFilename relativeToVRT="1">./t/a.tif</SourceFilename>'
+        f'{src}<DstRect xOff="0" yOff="0" xSize="5" ySize="5" /></ComplexSource>'
+        '<ComplexSource><SourceFilename relativeToVRT="1">./t/b.tif</SourceFilename>'
+        f'{src}<DstRect xOff="5" yOff="0" xSize="5" ySize="5" /></ComplexSource>'
+        "</VRTRasterBand></VRTDataset>"
+    )
+    return f"file://{tmp_path}/m.vrt", vrt
 
 
-def test_cog_pixel_is_read_in_the_raster_crs(provider, tmp_path):
-    """lon/lat must be reprojected to the COG's CRS before indexing."""
-    import rasterio
+class _LocalRasterio:
+    """rasterio, but /vsicurl/file://... opens the local file."""
+
+    @staticmethod
+    def open(p):
+        import rasterio
+
+        return rasterio.open(p.replace("/vsicurl/", "").replace("file://", ""))
+
+    @staticmethod
+    def Env(**kw):
+        import rasterio
+
+        return rasterio.Env(**kw)
+
+
+@pytest.fixture
+def mosaic(tmp_path, monkeypatch):
+    from nkz_soil.providers import soilgrids_vrt
 
     lon, lat = -2.0788, 42.6400
-    path = _projected_raster(tmp_path, lon, lat, 271)
-
-    class _Shim:
-        @staticmethod
-        def open(p):
-            return rasterio.open(p.replace("/vsicurl/", ""))
-
-    assert provider._read_cog_pixel(_Shim, str(path), lon, lat) == 271.0
+    url, vrt = _mosaic(tmp_path, lon, lat, 271)
+    fetched = []
+    monkeypatch.setattr(soilgrids_vrt, "_cache", {})
+    monkeypatch.setattr(soilgrids_vrt, "_fetch_text", lambda u: fetched.append(u) or vrt)
+    return url, lon, lat, fetched
 
 
-def test_cog_pixel_outside_raster_is_none(provider, tmp_path):
-    import rasterio
+def test_cog_pixel_reads_only_the_tile_under_the_point(provider, mosaic):
+    """lon/lat is reprojected to the mosaic CRS, its tile resolved, and read."""
+    url, lon, lat, _ = mosaic
+    assert provider._read_cog_pixel(_LocalRasterio, url, lon, lat) == 271.0
 
-    path = _projected_raster(tmp_path, -2.0788, 42.6400, 271)
 
-    class _Shim:
-        @staticmethod
-        def open(p):
-            return rasterio.open(p.replace("/vsicurl/", ""))
+def test_cog_pixel_outside_every_tile_is_none(provider, mosaic):
+    url, *_ = mosaic
+    assert provider._read_cog_pixel(_LocalRasterio, url, 10.0, 50.0) is None
 
-    assert provider._read_cog_pixel(_Shim, str(path), 10.0, 50.0) is None
+
+def test_vrt_is_downloaded_once_per_process(provider, mosaic):
+    url, lon, lat, fetched = mosaic
+    for _ in range(3):
+        provider._read_cog_pixel(_LocalRasterio, url, lon, lat)
+    assert fetched == [url]
+
+
+def test_locate_maps_dst_to_src_rect():
+    """Edge tiles can have a SrcRect that differs from their DstRect."""
+    from nkz_soil.providers.soilgrids_vrt import TileIndex, TileSource
+
+    idx = TileIndex(crs_wkt="", geotransform=(0, 1, 0, 0, 0, -1), sources=(
+        TileSource(url="u", src=(10, 20, 100, 100), dst=(50, 60, 100, 100)),
+    ))
+    assert idx.locate(55, 61) == ("u", 15, 21)
+    assert idx.locate(49, 61) is None
 
 
 @respx.mock

@@ -7,6 +7,7 @@ import httpx
 
 try:
     import rasterio
+    from rasterio.crs import CRS
     from rasterio.warp import transform as warp_transform
     from rasterio.windows import Window
     _HAS_RASTERIO = True
@@ -21,6 +22,7 @@ from nkz_soil.models.domain import (
     SoilDataResult,
     SoilProperty,
 )
+from nkz_soil.providers import soilgrids_vrt
 from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.util.nodata import is_soilgrids_nodata
 
@@ -194,18 +196,24 @@ class SoilGridsProvider:
         )
 
     def _read_cog_pixel(self, rasterio, cog_url: str, lon: float, lat: float) -> float | None:
-        vsi_url = f"/vsicurl/{cog_url}"
-        with rasterio.open(vsi_url) as src:
-            # The SoilGrids COGs are in Interrupted Goode Homolosine (metres):
-            # indexing them with degrees lands near (0, 0), always NODATA.
-            xs, ys = warp_transform("EPSG:4326", src.crs, [lon], [lat])
-            row, col = src.index(xs[0], ys[0])
-            if not (0 <= row < src.height and 0 <= col < src.width):
-                return None
-            window = Window(col, row, 1, 1)
-            data = src.read(1, window=window)
-            if data.size > 0:
-                return float(data[0, 0])
+        """Pixel under (lon, lat) from a SoilGrids mosaic, reading one tile only.
+
+        The mosaics are in Interrupted Goode Homolosine (metres), so the point is
+        reprojected first. See soilgrids_vrt for why the VRT is never opened.
+        """
+        index = soilgrids_vrt.tile_index(cog_url)
+        xs, ys = warp_transform("EPSG:4326", CRS.from_wkt(index.crs_wkt), [lon], [lat])
+        hit = index.locate(*index.pixel(xs[0], ys[0]))
+        if hit is None:
+            return None  # outside every tile: no coverage
+        tile_url, col, row = hit
+        with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"):
+            with rasterio.open(f"/vsicurl/{tile_url}") as src:
+                if not (0 <= row < src.height and 0 <= col < src.width):
+                    return None
+                data = src.read(1, window=Window(col, row, 1, 1))
+        if data.size > 0:
+            return float(data[0, 0])
         return None
 
     async def _fetch_rest(
