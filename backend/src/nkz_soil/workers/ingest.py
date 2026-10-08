@@ -117,6 +117,7 @@ class EnrichedHorizon:
     available_water_capacity: float | None = None
     field_capacity: float | None = None
     wilting_point: float | None = None
+    saturation: float | None = None
     usda_texture_class: str | None = None
     hydrologic_group: str | None = None
     penetration_resistance: float | None = None
@@ -466,6 +467,7 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
             )
             h.field_capacity = ptf["field_capacity"]
             h.wilting_point = ptf["wilting_point"]
+            h.saturation = ptf["saturation"]
             h.hydrologic_group = scs_hydrologic_group(ptf["ksat"])
 
         if (
@@ -543,6 +545,7 @@ def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
         "availableWaterCapacity": horizon.available_water_capacity,
         "fieldCapacity": horizon.field_capacity,
         "wiltingPoint": horizon.wilting_point,
+        "saturation": horizon.saturation,
         "hydrologicGroup": horizon.hydrologic_group,
         "usdaTextureClass": horizon.usda_texture_class,
         "compactionSusceptibility": (
