@@ -13,8 +13,9 @@ from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.storage.pg import get_pool
 
 # ESDB variable -> Horizon field
-_VAR_TO_HORIZON = {"CLAY": "clay", "SAND": "sand", "SILT": "silt",
-                   "OC": "organic_carbon", "PH": "ph"}
+# OC_TOP is excluded on purpose: in the ESDB v2 Raster Library it is a uint8
+# class code (1-5), not a percentage, and must never feed the PTF as one.
+_VAR_TO_HORIZON = {"CLAY": "clay", "SAND": "sand", "SILT": "silt", "PH": "ph"}
 _TOPSOIL = {(0, 5), (5, 15), (15, 30)}
 
 

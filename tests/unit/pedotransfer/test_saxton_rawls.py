@@ -49,3 +49,15 @@ def test_saxton_rawls_returns_saturation_above_field_capacity():
     for sand, clay, oc in cases:
         r = saxton_rawls_2006(sand=sand, clay=clay, organic_carbon=oc)
         assert r["field_capacity"] < r["saturation"] <= 1.0, (sand, clay, r)
+
+
+def test_organic_matter_enters_in_percent():
+    """Saxton & Rawls 2006 take OM in % weight (sand and clay as fractions).
+
+    With OM wrongly divided by 100 the OM terms vanish: a loam would keep the
+    same field capacity at 0.5 % and 3 % organic carbon.
+    """
+    low = saxton_rawls_2006(40.0, 20.0, 0.5)
+    high = saxton_rawls_2006(40.0, 20.0, 3.0)
+    assert high["field_capacity"] - low["field_capacity"] > 0.01
+    assert high["wilting_point"] > low["wilting_point"]

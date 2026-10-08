@@ -6,12 +6,14 @@ from typing import Any
 
 import redis.asyncio as aioredis
 
-logger = logging.getLogger(__name__)
-
 from nkz_soil.config import CACHE_TTL_BASELINE, CACHE_TTL_REVISABLE, REDIS_URL
 from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
 
-CACHE_KEY_PREFIX = "soil:cache:"
+logger = logging.getLogger(__name__)
+
+# Bump the version whenever a provider's parsing or units change, so results
+# produced by the old code are never served again (TTL is up to 90 days).
+CACHE_KEY_PREFIX = "soil:cache:v2:"
 
 
 def _compute_cache_key(

@@ -11,11 +11,14 @@ def saxton_rawls_2006(sand: float, clay: float, organic_carbon: float) -> dict:
     Follows Saxton & Rawls 2006 (SSSAJ 70:1569-1578) Eqs. 1-5, 15-16, 18.
 
     Note: sand and clay are expected as percentages (0-100) and converted
-    to mass fractions internally. The regression equations use mass fractions.
+    to mass fractions internally; organic matter is used in % weight, as the
+    regression equations require. Calibrated for OM <= 8 % and clay <= 60 %.
     """
     s = sand / 100
     c = clay / 100
-    om = (organic_carbon * 1.724) / 100
+    # OM stays in % weight: the 2006 regressions take S and C as fractions but
+    # OM as a percentage (e.g. 2.5). Dividing it by 100 erases its effect.
+    om = organic_carbon * 1.724
 
     theta_1500t = -0.024 * s + 0.487 * c + 0.006 * om + \
                   0.005 * s * om - 0.013 * c * om + \
