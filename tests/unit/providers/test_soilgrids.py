@@ -186,7 +186,7 @@ def test_cog_pixel_outside_raster_is_none(provider, tmp_path):
 async def test_rest_divides_by_d_factor_and_reports_carbon_in_percent(provider):
     """d_factor converts mapped units to conventional ones (divide), and soil
     organic carbon (g/kg conventional) is canonical in %."""
-    layer = lambda name, mean, f: {  # noqa: E731
+    layer = lambda name, mean, f: {
         "name": name, "unit_measure": {"d_factor": f},
         "depths": [{"range": {"top_depth": 0, "bottom_depth": 5}, "values": {"mean": mean}}],
     }
