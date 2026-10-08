@@ -207,11 +207,13 @@ class SoilGridsProvider:
         if hit is None:
             return None  # outside every tile: no coverage
         tile_url, col, row = hit
-        with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"):
-            with rasterio.open(f"/vsicurl/{tile_url}") as src:
-                if not (0 <= row < src.height and 0 <= col < src.width):
-                    return None
-                data = src.read(1, window=Window(col, row, 1, 1))
+        with (
+            rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"),
+            rasterio.open(f"/vsicurl/{tile_url}") as src,
+        ):
+            if not (0 <= row < src.height and 0 <= col < src.width):
+                return None
+            data = src.read(1, window=Window(col, row, 1, 1))
         if data.size > 0:
             return float(data[0, 0])
         return None
