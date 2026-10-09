@@ -40,3 +40,9 @@ tillage_limits:
     cannot take up water. Physical definition chosen for the platform, not a
     published tillage limit.
   absent_when: "no saturation or wilting point, or saturation - 0.10 <= wilting point"
+
+saturation_bound:
+  rule: "saturation = min(Saxton-Rawls 2006 saturation, totalPorosity) when bulk density is known"
+  totalPorosity: "1 - bulkDensity / 2.65 (standard mineral particle density). Water cannot fill more than the pore space; organic matter lowers the real particle density, so the bound is conservative."
+  not_recomputed: "ksatSaturated keeps the regression value (computed from the unbounded saturation)."
+pedotransferOutOfCalibration: "True when organic matter (organic carbon x 1.724) > 8 % or clay > 60 %: outside the range of the Saxton-Rawls 2006 regressions, so their values are extrapolations."

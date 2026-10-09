@@ -1,5 +1,24 @@
 import math
 
+# Range of the data the 2006 regressions were fitted on (docstring below).
+CALIBRATION_MAX_ORGANIC_MATTER_PCT = 8.0
+CALIBRATION_MAX_CLAY_PCT = 60.0
+OC_TO_OM = 1.724  # van Bemmelen factor
+
+
+def outside_calibration(clay: float | None, organic_carbon: float | None) -> bool | None:
+    """True when the inputs lie outside the regressions' calibration range.
+
+    The equations still return numbers there, but they are extrapolations.
+    None when the inputs are unknown.
+    """
+    if clay is None or organic_carbon is None:
+        return None
+    return (
+        organic_carbon * OC_TO_OM > CALIBRATION_MAX_ORGANIC_MATTER_PCT
+        or clay > CALIBRATION_MAX_CLAY_PCT
+    )
+
 
 def saxton_rawls_2006(sand: float, clay: float, organic_carbon: float) -> dict:
     """Saxton & Rawls (2006) pedotransfer functions.
@@ -18,7 +37,7 @@ def saxton_rawls_2006(sand: float, clay: float, organic_carbon: float) -> dict:
     c = clay / 100
     # OM stays in % weight: the 2006 regressions take S and C as fractions but
     # OM as a percentage (e.g. 2.5). Dividing it by 100 erases its effect.
-    om = organic_carbon * 1.724
+    om = organic_carbon * OC_TO_OM
 
     theta_1500t = -0.024 * s + 0.487 * c + 0.006 * om + \
                   0.005 * s * om - 0.013 * c * om + \

@@ -355,3 +355,48 @@ async def test_rederive_tillage_limits_patches_only_changed_entities():
     assert sent["providedBy"] == "soilgrids"          # sub-properties preserved
     assert "createdAt" not in sent                     # system fields not sent back
     assert sent["value"][0]["wetTillageLimit"] == 0.35
+
+
+def test_apply_pedotransfer_caps_saturation_at_porosity_and_flags_calibration():
+    # Live lab horizon: sandy loam, OC 6.09 %, bulk density 1.15.
+    h = _apply_pedotransfer([
+        EnrichedHorizon(depth_from=0, depth_to=5, sand=65, silt=25, clay=10,
+                        organic_carbon=6.09, bulk_density=1.15),
+    ])[0]
+    assert h.total_porosity == 0.566
+    assert h.saturation == 0.566
+    assert h.wet_tillage_limit == 0.466
+    assert h.pedotransfer_out_of_calibration is True
+
+
+def test_apply_pedotransfer_without_density_keeps_regression_saturation():
+    from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
+
+    h = _apply_pedotransfer([
+        EnrichedHorizon(depth_from=0, depth_to=5, sand=40, clay=20, organic_carbon=1.0),
+    ])[0]
+    assert h.saturation == saxton_rawls_2006(40, 20, 1.0)["saturation"]
+    assert h.total_porosity is None
+    assert h.pedotransfer_out_of_calibration is False
+
+
+def test_horizon_to_dict_emits_porosity_and_calibration_flag():
+    d = _horizon_to_dict(EnrichedHorizon(depth_from=0, depth_to=5, total_porosity=0.566,
+                                         pedotransfer_out_of_calibration=True))
+    assert d["totalPorosity"] == 0.566
+    assert d["pedotransferOutOfCalibration"] is True
+
+
+def test_rederive_horizons_caps_stored_saturation():
+    from nkz_soil.workers.ingest import _rederive_horizons
+
+    stored = [{"depthFrom": 0, "depthTo": 5, "clay": 10, "organicCarbon": 6.09,
+               "bulkDensity": 1.15, "saturation": 0.677, "wiltingPoint": 0.153,
+               "wetTillageLimit": 0.577, "dryTillageLimit": 0.153,
+               "tillageLimitsMethod": "1"}]
+    new = _rederive_horizons(stored)
+    assert new[0]["saturation"] == 0.566
+    assert new[0]["totalPorosity"] == 0.566
+    assert new[0]["wetTillageLimit"] == 0.466
+    assert new[0]["pedotransferOutOfCalibration"] is True
+    assert _rederive_horizons(new) is None   # idempotent

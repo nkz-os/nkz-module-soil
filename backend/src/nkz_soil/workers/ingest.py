@@ -13,8 +13,9 @@ from nkz_soil.models.domain import DepthInterval, SoilDataResult, SoilProperty
 from nkz_soil.models.ngsi_ld import AgriSoilExtended, GeoProperty, Relationship, TaggedProperty
 from nkz_soil.pedotransfer.awc import awc_from_horizons
 from nkz_soil.pedotransfer.compaction_susceptibility import compaction_susceptibility_score
+from nkz_soil.pedotransfer.porosity import bounded_saturation, total_porosity
 from nkz_soil.pedotransfer.relative_compaction import relative_compaction
-from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
+from nkz_soil.pedotransfer.saxton_rawls import outside_calibration, saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.pedotransfer.workability import METHOD_VERSION, tillage_limits
@@ -121,6 +122,8 @@ class EnrichedHorizon:
     saturation: float | None = None
     wet_tillage_limit: float | None = None
     dry_tillage_limit: float | None = None
+    total_porosity: float | None = None
+    pedotransfer_out_of_calibration: bool | None = None
     usda_texture_class: str | None = None
     hydrologic_group: str | None = None
     penetration_resistance: float | None = None
@@ -470,7 +473,9 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
             )
             h.field_capacity = ptf["field_capacity"]
             h.wilting_point = ptf["wilting_point"]
-            h.saturation = ptf["saturation"]
+            h.total_porosity = total_porosity(h.bulk_density)
+            h.saturation = bounded_saturation(ptf["saturation"], h.bulk_density)
+            h.pedotransfer_out_of_calibration = outside_calibration(h.clay, h.organic_carbon)
             h.wet_tillage_limit, h.dry_tillage_limit = tillage_limits(
                 h.saturation, h.wilting_point
             )
@@ -552,6 +557,8 @@ def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
         "fieldCapacity": horizon.field_capacity,
         "wiltingPoint": horizon.wilting_point,
         "saturation": horizon.saturation,
+        "totalPorosity": horizon.total_porosity,
+        "pedotransferOutOfCalibration": horizon.pedotransfer_out_of_calibration,
         "wetTillageLimit": horizon.wet_tillage_limit,
         "dryTillageLimit": horizon.dry_tillage_limit,
         "tillageLimitsMethod": (
@@ -703,19 +710,35 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
 _ORION_SYSTEM_ATTRS = ("createdAt", "modifiedAt", "observedAt_system")
 
 
+_REDERIVED_KEYS = (
+    "saturation", "totalPorosity", "pedotransferOutOfCalibration",
+    "wetTillageLimit", "dryTillageLimit", "tillageLimitsMethod",
+)
+
+
 def _rederive_horizons(horizons: list[dict]) -> list[dict] | None:
-    """Horizons with tillage limits recomputed, or None when nothing changes."""
+    """Horizons with the values derived from stored ones recomputed, or None when
+    nothing changes: saturation bounded by porosity, calibration flag, tillage limits.
+    """
     out, changed = [], False
     for h in horizons:
-        wet, dry = tillage_limits(
-            clean_nodata_value(h.get("saturation")),
-            clean_nodata_value(h.get("wiltingPoint")),
-        )
-        method = METHOD_VERSION if wet is not None else None
-        new = {**h, "wetTillageLimit": wet, "dryTillageLimit": dry,
-               "tillageLimitsMethod": method}
-        if any(h.get(k) != new[k] for k in
-               ("wetTillageLimit", "dryTillageLimit", "tillageLimitsMethod")):
+        bulk_density = clean_nodata_value(h.get("bulkDensity"))
+        stored = clean_nodata_value(h.get("saturation"))
+        saturation = bounded_saturation(stored, bulk_density)
+        wet, dry = tillage_limits(saturation, clean_nodata_value(h.get("wiltingPoint")))
+        new = {
+            **h,
+            # Rewritten only when the porosity bound lowers it.
+            "saturation": saturation if saturation != stored else h.get("saturation"),
+            "totalPorosity": total_porosity(bulk_density),
+            "pedotransferOutOfCalibration": outside_calibration(
+                clean_nodata_value(h.get("clay")), clean_nodata_value(h.get("organicCarbon"))
+            ),
+            "wetTillageLimit": wet,
+            "dryTillageLimit": dry,
+            "tillageLimitsMethod": METHOD_VERSION if wet is not None else None,
+        }
+        if any(h.get(k) != new[k] for k in _REDERIVED_KEYS):
             changed = True
         out.append(new)
     return out if changed else None

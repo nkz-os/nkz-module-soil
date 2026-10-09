@@ -9,7 +9,7 @@ SOILGRIDS_NODATA: tuple[float, ...] = (-32768.0, -9999.0, -3276.8, -3.40282347e3
 _NUMERIC_HORIZON_KEYS = frozenset({
     "sand", "silt", "clay", "organicCarbon", "ph", "cec", "coarseFragments",
     "bulkDensity", "nitrogen", "fieldCapacity", "wiltingPoint", "saturation", "ksatMmH",
-    "wetTillageLimit", "dryTillageLimit",
+    "wetTillageLimit", "dryTillageLimit", "totalPorosity",
     "penetrationResistance", "organic_carbon", "bulk_density", "coarse_fragments",
 })
 
