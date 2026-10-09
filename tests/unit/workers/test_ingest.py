@@ -400,3 +400,17 @@ def test_rederive_horizons_caps_stored_saturation():
     assert new[0]["wetTillageLimit"] == 0.466
     assert new[0]["pedotransferOutOfCalibration"] is True
     assert _rederive_horizons(new) is None   # idempotent
+
+
+def test_rederive_keeps_the_porosity_ingest_derived():
+    """Ingest derives porosity from the PTF-input density, which can be a
+    non-redistributable source different from the bulk density published.
+    The daily job must not recompute it from the published one (flip-flop)."""
+    from nkz_soil.workers.ingest import _rederive_horizons
+
+    stored = [{"depthFrom": 0, "depthTo": 5, "clay": 10, "organicCarbon": 6.09,
+               "bulkDensity": 1.15, "saturation": 0.514, "totalPorosity": 0.514,
+               "pedotransferOutOfCalibration": True, "wiltingPoint": 0.153,
+               "wetTillageLimit": 0.414, "dryTillageLimit": 0.153,
+               "tillageLimitsMethod": "1"}]
+    assert _rederive_horizons(stored) is None

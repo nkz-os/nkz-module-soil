@@ -74,3 +74,38 @@ async def test_backfill_uses_orionclient_when_tenants_found_in_db(monkeypatch):
     assert args[0] == "ingest_parcel"
     assert args[1] == "p1"
     assert args[2] == "montiko"
+
+
+@pytest.mark.asyncio
+async def test_backfill_skips_parcels_whose_soil_comes_back_as_refagriparcel(monkeypatch):
+    """Orion compacts the relationship to the legacy alias refAgriParcel.
+
+    Reading only hasAgriParcel left the "already has soil" set empty, so every
+    parcel was re-ingested on every run (seen live 2026-10-09: 19 enqueued).
+    """
+    monkeypatch.setenv("POSTGRES_URL", "postgresql://u:p@h:5432/nekazari")
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=[{"tenant_id": "montiko"}])
+    conn.close = AsyncMock()
+
+    orion = AsyncMock()
+    orion.__aenter__ = AsyncMock(return_value=orion)
+    orion.__aexit__ = AsyncMock(return_value=None)
+    orion.query_entities = AsyncMock(side_effect=[
+        [{"id": "urn:ngsi-ld:AgriParcel:p1", "location": {"value": {}}},
+         {"id": "urn:ngsi-ld:AgriParcel:p2", "location": {"value": {}}}],
+        [{"id": "urn:ngsi-ld:AgriSoilExtended:p1",
+          "refAgriParcel": {"type": "Relationship", "object": "urn:ngsi-ld:AgriParcel:p1"}}],
+    ])
+    redis = AsyncMock()
+    redis.enqueue_job = AsyncMock()
+
+    import asyncpg
+    from nkz_soil.workers.ingest import backfill_parcels_without_soil
+
+    with patch.object(asyncpg, "connect", AsyncMock(return_value=conn)), \
+         patch("nkz_soil.workers.ingest.OrionClient", return_value=orion):
+        await backfill_parcels_without_soil({"redis": redis})
+
+    redis.enqueue_job.assert_awaited_once()
+    assert redis.enqueue_job.call_args[0][1] == "p2"
