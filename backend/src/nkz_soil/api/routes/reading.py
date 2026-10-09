@@ -9,10 +9,12 @@ from nkz_soil.models.domain import DepthInterval
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
+from nkz_soil.pedotransfer.workability import WORKABILITY_METHOD
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 from nkz_soil.util.nodata import sanitize_horizons
 
 router = APIRouter()
+_DERIVED_KEYS = ("saturation", "wetTillageLimit", "dryTillageLimit", "tillageLimitsMethod")
 _REQUIRE_AUTH = require_auth()
 
 
@@ -40,11 +42,12 @@ async def parcel_summary(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH):
     async with OrionClient(auth.tenant_id) as orion:
         entity = await _first_agri_soil(orion, parcel_id)
         return {
-            # Horizons persisted before `saturation` existed lack the key -> null.
+            # Horizons persisted before a derived key existed lack it -> null.
             "horizons": [
-                {**h, "saturation": h.get("saturation")}
+                {**h, **{k: h.get(k) for k in _DERIVED_KEYS}}
                 for h in sanitize_horizons(entity.get("horizons", {}).get("value", []))
             ],
+            "workabilityMethod": WORKABILITY_METHOD,
             "dataSource": {
                 "type": "Property",
                 "value": _prop_value(entity, "dataSource", ""),

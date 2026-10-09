@@ -17,6 +17,7 @@ from nkz_soil.pedotransfer.relative_compaction import relative_compaction
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
+from nkz_soil.pedotransfer.workability import METHOD_VERSION, tillage_limits
 from nkz_soil.providers.base import ProviderRegistry, ProviderResult, RedisCircuitBreaker
 from nkz_soil.providers.bgs import BgsProvider
 from nkz_soil.providers.cache import ProviderCache
@@ -31,7 +32,7 @@ from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.metrics import metrics
 from nkz_soil.providers.soilgrids import SoilGridsProvider
 from nkz_soil.storage.orion import OrionClient
-from nkz_soil.util.nodata import is_soilgrids_nodata
+from nkz_soil.util.nodata import clean_nodata_value, is_soilgrids_nodata
 from nkz_soil.workers.water_budget import compute_water_budgets
 
 _PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
@@ -118,6 +119,8 @@ class EnrichedHorizon:
     field_capacity: float | None = None
     wilting_point: float | None = None
     saturation: float | None = None
+    wet_tillage_limit: float | None = None
+    dry_tillage_limit: float | None = None
     usda_texture_class: str | None = None
     hydrologic_group: str | None = None
     penetration_resistance: float | None = None
@@ -468,6 +471,9 @@ def _apply_pedotransfer(horizons: list[EnrichedHorizon]) -> list[EnrichedHorizon
             h.field_capacity = ptf["field_capacity"]
             h.wilting_point = ptf["wilting_point"]
             h.saturation = ptf["saturation"]
+            h.wet_tillage_limit, h.dry_tillage_limit = tillage_limits(
+                h.saturation, h.wilting_point
+            )
             h.hydrologic_group = scs_hydrologic_group(ptf["ksat"])
 
         if (
@@ -546,6 +552,11 @@ def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
         "fieldCapacity": horizon.field_capacity,
         "wiltingPoint": horizon.wilting_point,
         "saturation": horizon.saturation,
+        "wetTillageLimit": horizon.wet_tillage_limit,
+        "dryTillageLimit": horizon.dry_tillage_limit,
+        "tillageLimitsMethod": (
+            METHOD_VERSION if horizon.wet_tillage_limit is not None else None
+        ),
         "hydrologicGroup": horizon.hydrologic_group,
         "usdaTextureClass": horizon.usda_texture_class,
         "compactionSusceptibility": (
@@ -585,21 +596,15 @@ def _aggregate_uncertainty(results: list) -> float:
     return round(sum(r.uncertainty for r in results) / len(results), 2)
 
 
-async def backfill_parcels_without_soil(ctx: dict) -> None:
-    """Cada 6h: detecta parcelas sin AgriSoilExtended y las ingiere."""
-    import logging
-
+async def _soil_tenants(logger) -> list[str]:
+    """Tenants with the soil module enabled: platform DB, then env, then Orion."""
     import asyncpg
-    from arq.connections import ArqRedis
-
-    logger = logging.getLogger(__name__)
-    logger.info("Backfill soil: scanning for parcels without soil data")
 
     # tenant_installed_modules lives in the PLATFORM DB, not the soil module DB.
     db_url = _platform_postgres_url()
 
     # Discover tenants: try DB first, then env var, then guess from Orion
-    tenants = []
+    tenants: list[str] = []
     if db_url:
         try:
             conn = await asyncpg.connect(db_url)
@@ -631,6 +636,19 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
             except Exception:  # noqa: BLE001 — tenant guess may fail; skip and try next
                 logger.debug("Backfill soil: tenant guess %s failed, trying next", guess)
         logger.info("Backfill soil: discovered tenants from Orion: %s", tenants)
+    return tenants
+
+
+async def backfill_parcels_without_soil(ctx: dict) -> None:
+    """Cada 6h: detecta parcelas sin AgriSoilExtended y las ingiere."""
+    import logging
+
+    from arq.connections import ArqRedis
+
+    logger = logging.getLogger(__name__)
+    logger.info("Backfill soil: scanning for parcels without soil data")
+
+    tenants = await _soil_tenants(logger)
     logger.info("Backfill soil: %d tenants with soil module enabled", len(tenants))
 
     redis: ArqRedis = ctx.get("redis")  # type: ignore[assignment]
@@ -680,6 +698,58 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
 
     if ctx.get("redis") is None:
         await redis.close()
+
+
+_ORION_SYSTEM_ATTRS = ("createdAt", "modifiedAt", "observedAt_system")
+
+
+def _rederive_horizons(horizons: list[dict]) -> list[dict] | None:
+    """Horizons with tillage limits recomputed, or None when nothing changes."""
+    out, changed = [], False
+    for h in horizons:
+        wet, dry = tillage_limits(
+            clean_nodata_value(h.get("saturation")),
+            clean_nodata_value(h.get("wiltingPoint")),
+        )
+        method = METHOD_VERSION if wet is not None else None
+        new = {**h, "wetTillageLimit": wet, "dryTillageLimit": dry,
+               "tillageLimitsMethod": method}
+        if any(h.get(k) != new[k] for k in
+               ("wetTillageLimit", "dryTillageLimit", "tillageLimitsMethod")):
+            changed = True
+        out.append(new)
+    return out if changed else None
+
+
+async def rederive_tillage_limits(ctx: dict) -> None:
+    """Daily: write tillage limits into soil entities that lack or disagree with them.
+
+    Idempotent: an entity is patched only when a recomputed limit differs from
+    the stored one, so a second run touches nothing. The stored ``horizons``
+    attribute is sent back whole (provenance sub-properties included) with only
+    its value replaced.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    patched = 0
+    for tenant_id in await _soil_tenants(logger):
+        try:
+            async with OrionClient(tenant_id) as orion:
+                for soil in await orion.query_entities(type="AgriSoilExtended"):
+                    attr = soil.get("horizons")
+                    if not isinstance(attr, dict) or not isinstance(attr.get("value"), list):
+                        continue
+                    new = _rederive_horizons(attr["value"])
+                    if new is None:
+                        continue
+                    sent = {k: v for k, v in attr.items() if k not in _ORION_SYSTEM_ATTRS}
+                    sent["value"] = new
+                    await orion.patch_entity(soil["id"], {"horizons": sent})
+                    patched += 1
+        except Exception as e:  # noqa: BLE001 — one tenant failing must not stop the others
+            logger.error("Tillage limits: error processing %s (%s)", tenant_id, e)
+    logger.info("Tillage limits: %d soil entities updated", patched)
 
 
 async def reap_stuck_jobs(ctx: dict) -> None:
@@ -795,6 +865,26 @@ class WorkerSettings:
             run_at_startup=True,
             unique=True,
             job_id="backfill_soil",
+            timeout_s=600,
+            keep_result_s=3600,
+            keep_result_forever=False,
+            max_tries=1,
+        ),
+        CronJob(
+            name="rederive_tillage_limits",
+            coroutine=rederive_tillage_limits,
+            month=None,
+            day=None,
+            weekday=None,
+            hour=3,
+            minute=0,
+            second=0,
+            microsecond=0,
+            # At startup too: a deploy brings existing soil entities up to date
+            # without waiting a day. Idempotent, so repeated runs patch nothing.
+            run_at_startup=True,
+            unique=True,
+            job_id="rederive_tillage_limits",
             timeout_s=600,
             keep_result_s=3600,
             keep_result_forever=False,

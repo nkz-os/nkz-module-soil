@@ -169,3 +169,24 @@ def test_parcel_summary_exposes_saturation_and_null_for_old_rows(client, mock_or
     hs = resp.json()["horizons"]
     assert hs[0]["saturation"] == 0.45
     assert "saturation" in hs[1] and hs[1]["saturation"] is None
+
+
+def test_parcel_summary_exposes_tillage_limits_and_method(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "horizons": {"value": [
+                {"depthFrom": 0, "depthTo": 5, "saturation": 0.45,
+                 "wetTillageLimit": 0.35, "dryTillageLimit": 0.13, "tillageLimitsMethod": "1"},
+                {"depthFrom": 5, "depthTo": 15, "saturation": 0.44},  # persisted before the limits
+            ]},
+        }
+    ]
+    resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["horizons"][0]["wetTillageLimit"] == 0.35
+    assert body["horizons"][0]["dryTillageLimit"] == 0.13
+    assert body["horizons"][1]["wetTillageLimit"] is None
+    assert body["horizons"][1]["tillageLimitsMethod"] is None
+    assert body["workabilityMethod"]["version"] == "1"
