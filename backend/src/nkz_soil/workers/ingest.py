@@ -671,7 +671,8 @@ async def backfill_parcels_without_soil(ctx: dict) -> None:
 
             soiled = set()
             for s in soils:
-                ref = s.get("hasAgriParcel") or {}
+                # Orion may compact the relationship to its legacy alias.
+                ref = s.get("hasAgriParcel") or s.get("refAgriParcel") or {}
                 obj = ref.get("object") if isinstance(ref, dict) else ref
                 if obj:
                     soiled.add(obj)
@@ -722,15 +723,20 @@ def _rederive_horizons(horizons: list[dict]) -> list[dict] | None:
     """
     out, changed = [], False
     for h in horizons:
-        bulk_density = clean_nodata_value(h.get("bulkDensity"))
+        # Ingest derives porosity from the density the pedotransfer used, which
+        # may be a non-redistributable source rather than the published
+        # bulkDensity: keep its value and derive only when it is missing.
+        porosity = clean_nodata_value(h.get("totalPorosity"))
+        if porosity is None:
+            porosity = total_porosity(clean_nodata_value(h.get("bulkDensity")))
         stored = clean_nodata_value(h.get("saturation"))
-        saturation = bounded_saturation(stored, bulk_density)
+        saturation = stored if porosity is None or stored is None else min(stored, porosity)
         wet, dry = tillage_limits(saturation, clean_nodata_value(h.get("wiltingPoint")))
         new = {
             **h,
             # Rewritten only when the porosity bound lowers it.
             "saturation": saturation if saturation != stored else h.get("saturation"),
-            "totalPorosity": total_porosity(bulk_density),
+            "totalPorosity": porosity,
             "pedotransferOutOfCalibration": outside_calibration(
                 clean_nodata_value(h.get("clay")), clean_nodata_value(h.get("organicCarbon"))
             ),
