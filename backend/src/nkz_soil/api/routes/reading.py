@@ -14,7 +14,10 @@ from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 from nkz_soil.util.nodata import sanitize_horizons
 
 router = APIRouter()
-_DERIVED_KEYS = ("saturation", "wetTillageLimit", "dryTillageLimit", "tillageLimitsMethod")
+_DERIVED_KEYS = (
+    "saturation", "totalPorosity", "pedotransferOutOfCalibration",
+    "wetTillageLimit", "dryTillageLimit", "tillageLimitsMethod",
+)
 _REQUIRE_AUTH = require_auth()
 
 
