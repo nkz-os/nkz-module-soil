@@ -27,3 +27,16 @@ units:
     saturatedHydraulicConductivity: F61 (cm/h)
     organicCarbon: P1 (% mass)
     availableWaterCapacity: H51 (cm³/cm³)
+
+tillage_limits:
+  version: "1"
+  wetTillageLimit: |
+    saturation - 0.10 m3/m3: water content at an air-filled porosity of 0.10 m3/m3.
+    Obour P.B. (2018), PhD thesis, Aarhus University, p. 45 ("new approach");
+    Obour et al. (2019), Soil & Tillage Research. The authors call the fixed 0.10
+    "somewhat arbitrary".
+  dryTillageLimit: |
+    Permanent wilting point (-1500 kPa, Saxton & Rawls 2006): below it a seed
+    cannot take up water. Physical definition chosen for the platform, not a
+    published tillage limit.
+  absent_when: "no saturation or wilting point, or saturation - 0.10 <= wilting point"

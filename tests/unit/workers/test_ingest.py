@@ -259,3 +259,99 @@ async def test_ingest_parcel_updates_via_append_not_patch():
         assert called_id == entity_id
         assert "id" not in called_attrs
         assert "type" not in called_attrs
+
+
+def test_apply_pedotransfer_sets_tillage_limits():
+    from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
+
+    h = _apply_pedotransfer([
+        EnrichedHorizon(depth_from=0, depth_to=5, sand=40, clay=20, organic_carbon=1.0),
+    ])[0]
+    ptf = saxton_rawls_2006(40, 20, 1.0)
+    assert h.wet_tillage_limit == round(ptf["saturation"] - 0.10, 3)
+    assert h.dry_tillage_limit == round(ptf["wilting_point"], 3)
+
+
+def test_apply_pedotransfer_without_texture_has_no_tillage_limits():
+    h = _apply_pedotransfer([EnrichedHorizon(depth_from=0, depth_to=5)])[0]
+    assert h.wet_tillage_limit is None and h.dry_tillage_limit is None
+
+
+def test_horizon_to_dict_emits_tillage_limits_and_method():
+    h = EnrichedHorizon(depth_from=0, depth_to=5, wet_tillage_limit=0.35, dry_tillage_limit=0.13)
+    d = _horizon_to_dict(h)
+    assert d["wetTillageLimit"] == 0.35
+    assert d["dryTillageLimit"] == 0.13
+    assert d["tillageLimitsMethod"] == "1"
+
+
+def test_horizon_to_dict_without_limits_has_no_method():
+    d = _horizon_to_dict(EnrichedHorizon(depth_from=0, depth_to=5))
+    assert d["wetTillageLimit"] is None and d["dryTillageLimit"] is None
+    assert d["tillageLimitsMethod"] is None
+
+
+def test_rederive_horizons_adds_missing_limits():
+    from nkz_soil.workers.ingest import _rederive_horizons
+
+    old = [{"depthFrom": 0, "depthTo": 5, "saturation": 0.45, "wiltingPoint": 0.13},
+           {"depthFrom": 5, "depthTo": 15}]
+    new = _rederive_horizons(old)
+    assert new[0]["wetTillageLimit"] == 0.35 and new[0]["dryTillageLimit"] == 0.13
+    assert new[0]["tillageLimitsMethod"] == "1"
+    assert new[1]["wetTillageLimit"] is None and new[1]["tillageLimitsMethod"] is None
+    assert old[0].get("wetTillageLimit") is None  # input untouched
+
+
+def test_rederive_horizons_returns_none_when_up_to_date():
+    from nkz_soil.workers.ingest import _rederive_horizons
+
+    current = [{"depthFrom": 0, "depthTo": 5, "saturation": 0.45, "wiltingPoint": 0.13,
+                "wetTillageLimit": 0.35, "dryTillageLimit": 0.13, "tillageLimitsMethod": "1"}]
+    assert _rederive_horizons(current) is None
+
+
+def test_rederive_horizons_ignores_nodata_sentinels():
+    from nkz_soil.workers.ingest import _rederive_horizons
+
+    # A sentinel saturation yields no limits: nothing to write, no patch.
+    assert _rederive_horizons([{"depthFrom": 0, "depthTo": 5, "saturation": -32768.0,
+                                "wiltingPoint": 0.13}]) is None
+    stale = _rederive_horizons([{"depthFrom": 0, "depthTo": 5, "saturation": -32768.0,
+                                 "wiltingPoint": 0.13, "wetTillageLimit": 0.2}])
+    assert stale[0]["wetTillageLimit"] is None
+
+
+@pytest.mark.asyncio
+async def test_rederive_tillage_limits_patches_only_changed_entities():
+    from nkz_soil.workers.ingest import rederive_tillage_limits
+
+    stale = {
+        "id": "urn:ngsi-ld:AgriSoilExtended:a",
+        "horizons": {"type": "Property", "providedBy": "soilgrids", "createdAt": "x",
+                     "value": [{"depthFrom": 0, "depthTo": 5, "saturation": 0.45,
+                                "wiltingPoint": 0.13}]},
+    }
+    fresh = {
+        "id": "urn:ngsi-ld:AgriSoilExtended:b",
+        "horizons": {"type": "Property", "value": [
+            {"depthFrom": 0, "depthTo": 5, "saturation": 0.45, "wiltingPoint": 0.13,
+             "wetTillageLimit": 0.35, "dryTillageLimit": 0.13, "tillageLimitsMethod": "1"}]},
+    }
+    orion = AsyncMock()
+    orion.__aenter__ = AsyncMock(return_value=orion)
+    orion.__aexit__ = AsyncMock(return_value=None)
+    orion.query_entities = AsyncMock(return_value=[stale, fresh])
+    orion.patch_entity = AsyncMock()
+
+    with patch("nkz_soil.workers.ingest.OrionClient", return_value=orion), \
+         patch("nkz_soil.workers.ingest._soil_tenants", AsyncMock(return_value=["t1"])):
+        await rederive_tillage_limits({})
+
+    orion.patch_entity.assert_called_once()
+    entity_id, attrs = orion.patch_entity.call_args.args
+    assert entity_id == "urn:ngsi-ld:AgriSoilExtended:a"
+    sent = attrs["horizons"]
+    assert sent["providedBy"] == "soilgrids"          # sub-properties preserved
+    assert "createdAt" not in sent                     # system fields not sent back
+    assert sent["value"][0]["wetTillageLimit"] == 0.35
