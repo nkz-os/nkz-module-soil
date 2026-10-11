@@ -11,6 +11,7 @@ from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.pedotransfer.workability import WORKABILITY_METHOD
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
+from nkz_soil.util.ngsi import horizons_of
 from nkz_soil.util.nodata import sanitize_horizons
 
 router = APIRouter()
@@ -170,7 +171,7 @@ async def penetrometer_readings(
 
     points = []
     for e in entities:
-        horizons = e.get("horizons", {}).get("value", [])
+        horizons = horizons_of(e)
         if not horizons:
             continue
         # Penetrometer readings use a single depth interval per sampling point.

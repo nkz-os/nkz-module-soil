@@ -55,3 +55,24 @@ async def test_no_points_returns_empty(mock_orion, provider):
     )
 
     assert len(result.horizons) == 0
+
+
+@patch("nkz_soil.providers.lab_analysis.OrionClient")
+@pytest.mark.asyncio
+async def test_fetch_single_horizon_unwrapped_by_orion(mock_orion, provider):
+    mock_client = AsyncMock()
+    mock_client.query_entities.return_value = [{
+        "id": "urn:ngsi-ld:SoilSamplingPoint:sp-2",
+        "horizons": {"type": "Property",
+                     "value": {"depthFrom": 0, "depthTo": 30, "clay": 22, "ph": 7.9}},
+    }]
+    mock_orion.return_value.__aenter__.return_value = mock_client
+
+    result = await provider.fetch(
+        geometry={"type": "Point", "coordinates": [-1.6, 42.8]},
+        properties=[SoilProperty.CLAY],
+        depths=[DepthInterval(depth_from=0, depth_to=30)],
+    )
+
+    assert len(result.horizons) == 1
+    assert result.horizons[0].clay == 22
