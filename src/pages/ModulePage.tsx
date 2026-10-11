@@ -8,7 +8,9 @@ import { ngsiValue, soilHorizons } from '../lib/ngsiValue';
 import { sanitizeHorizons, sanitizeCompaction, isSoilgridsNodata } from '../lib/sanitizeHorizon';
 import { SoilProfileCard } from '../components/SoilProfileCard';
 import { Select } from '@nekazari/ui-kit';
-import { buildSamplingPayload, methodErrors, P_METHODS, K_METHODS } from '../lib/samplingPayload';
+import {
+  apiErrorDetail, buildSamplingPayload, fromSelect, labErrors, NONE, P_METHODS, K_METHODS,
+} from '../lib/samplingPayload';
 
 type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
 
@@ -512,12 +514,15 @@ function ManualSamplingTab() {
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const { data: parcels } = useEntities<NgsiLdEntity>('AgriParcel');
+  const noneOption = { value: NONE, label: t('fields.none') };
   const parcelOptions = (parcels || []).map((p) => ({
     value: p.id as string,
     label: ngsiValue<string>((p as NgsiLdEntity).name) ?? (p.id as string),
   }));
-  const pMethodOptions = P_METHODS.map((m) => ({ value: m, label: t(`methods.p.${m}`) }));
-  const kMethodOptions = K_METHODS.map((m) => ({ value: m, label: t(`methods.k.${m}`) }));
+  const pMethodOptions = [noneOption,
+    ...P_METHODS.map((m) => ({ value: m, label: t(`methods.p.${m}`) }))];
+  const kMethodOptions = [noneOption,
+    ...K_METHODS.map((m) => ({ value: m, label: t(`methods.k.${m}`) }))];
 
   const fields = [
     { key: 'lat', label: t('fields.lat'), type: 'number', required: true },
@@ -580,7 +585,7 @@ function ManualSamplingTab() {
     const bd = form.bulkDensity ? parseFloat(form.bulkDensity) : null;
     if (bd !== null && (bd < 0.1 || bd > 2.65)) errors.bulkDensity = t('validation.bulkDensity');
 
-    for (const [key, code] of Object.entries(methodErrors(form))) {
+    for (const [key, code] of Object.entries(labErrors(form))) {
       errors[key] = t(`validation.${code}`);
     }
     setValidationErrors(errors);
@@ -607,8 +612,9 @@ function ManualSamplingTab() {
       await api.uploadSamplingPoint(buildSamplingPayload(form));
       setResult({ type: 'success', message: t('success') });
       setForm(Object.fromEntries([...fields.map((f) => f.key), ...selectKeys].map((k) => [k, ''])));
-    } catch {
-      setResult({ type: 'error', message: t('error') });
+    } catch (err) {
+      const detail = apiErrorDetail(err);
+      setResult({ type: 'error', message: detail ? `${t('error')} ${detail}` : t('error') });
     }
   };
 
@@ -655,7 +661,7 @@ function ManualSamplingTab() {
 
       <div className="grid grid-cols-2 gap-4 mt-4">
         {([
-          ['parcelId', t('fields.parcel'), parcelOptions],
+          ['parcelId', t('fields.parcel'), [noneOption, ...parcelOptions]],
           ['phosphorusMethod', t('fields.phosphorusMethod'), pMethodOptions],
           ['potassiumMethod', t('fields.potassiumMethod'), kMethodOptions],
         ] as const).map(([key, label, options]) => (
@@ -663,7 +669,7 @@ function ManualSamplingTab() {
             <label className="block text-nkz-xs mb-1">{label}</label>
             <Select
               value={form[key]}
-              onValueChange={(v) => handleChange(key, v)}
+              onValueChange={(v) => handleChange(key, fromSelect(v))}
               options={[...options]}
               placeholder={t('fields.choose')}
               error={Boolean(validationErrors[key])}
@@ -914,8 +920,7 @@ function HistoryTab() {
                                 const loc = ps.location;
                                 const coords = (loc?.value as Record<string, unknown>)?.coordinates as number[] | undefined;
                                 const samplingDate = ps.samplingDate;
-                                const horizons = ps.horizons;
-                                const hList = (horizons?.value as Array<Record<string, unknown>>) || [];
+                                const hList = soilHorizons(p as Record<string, unknown>) as Array<Record<string, unknown>>;
                                 const topH = hList[0] || {};
 
                                 return (
@@ -961,8 +966,7 @@ function HistoryTab() {
                   const loc = ps.location;
                   const coords = (loc?.value as Record<string, unknown>)?.coordinates as number[] | undefined;
                   const samplingDate = ps.samplingDate;
-                  const horizons = ps.horizons;
-                  const hList = (horizons?.value as Array<Record<string, unknown>>) || [];
+                  const hList = soilHorizons(p as Record<string, unknown>) as Array<Record<string, unknown>>;
 
                   return (
                     <tr key={p.id} className="border-b border-nkz-border/50">

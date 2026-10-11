@@ -36,9 +36,42 @@ export function buildSamplingPayload(form: Record<string, string>): Record<strin
   return out;
 }
 
-export function methodErrors(form: Record<string, string>): Record<string, 'methodRequired'> {
-  const errors: Record<string, 'methodRequired'> = {};
+/** Value of the "none" option of the optional selects (Radix reserves the empty string). */
+export const NONE = '__none__';
+
+export function fromSelect(value: string): string {
+  return value === NONE ? '' : value;
+}
+
+type LabErrorCode = 'methodRequired' | 'valueRequired' | 'dateRequired';
+
+const FERTILITY_KEYS = ['organicMatter', 'totalNitrogen', 'nitrateN', 'ammoniumN',
+  'phosphorusAvailable', 'potassiumExchangeable', 'carbonates', 'activeLime'];
+
+/** Client-side mirror of the backend lab-analysis rules (the server stays authoritative). */
+export function labErrors(form: Record<string, string>): Record<string, LabErrorCode> {
+  const errors: Record<string, LabErrorCode> = {};
   if (form.phosphorusAvailable && !form.phosphorusMethod) errors.phosphorusMethod = 'methodRequired';
+  if (form.phosphorusMethod && !form.phosphorusAvailable) errors.phosphorusAvailable = 'valueRequired';
   if (form.potassiumExchangeable && !form.potassiumMethod) errors.potassiumMethod = 'methodRequired';
+  if (form.potassiumMethod && !form.potassiumExchangeable) errors.potassiumExchangeable = 'valueRequired';
+  if (FERTILITY_KEYS.some((k) => form[k]) && !form.samplingDate) errors.samplingDate = 'dateRequired';
   return errors;
+}
+
+/** The `detail` of an API error thrown by the SDK client (`HTTP <status> <text>: <body>`). */
+export function apiErrorDetail(err: unknown): string | null {
+  const message = err instanceof Error ? err.message : '';
+  const sep = message.indexOf(': ');
+  if (!message.startsWith('HTTP ') || sep < 0) return null;
+  try {
+    const detail = (JSON.parse(message.slice(sep + 2)) as { detail?: unknown }).detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      return detail.map((d) => (d as { msg?: string }).msg).filter(Boolean).join('; ') || null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }

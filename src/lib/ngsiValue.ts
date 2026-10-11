@@ -12,6 +12,8 @@ export function soilHorizons(entity: Record<string, unknown> | null | undefined)
   if (!entity) return [];
   const raw = entity.horizons;
   if (Array.isArray(raw)) return raw;
-  const unwrapped = ngsiValue<unknown[]>(raw);
-  return Array.isArray(unwrapped) ? unwrapped : [];
+  const unwrapped = ngsiValue<unknown>(raw);
+  if (Array.isArray(unwrapped)) return unwrapped;
+  // Orion-LD returns a one-element array unwrapped: a single horizon arrives as an object.
+  return unwrapped && typeof unwrapped === 'object' ? [unwrapped] : [];
 }

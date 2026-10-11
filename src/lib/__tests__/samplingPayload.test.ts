@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildSamplingPayload, methodErrors, P_METHODS, K_METHODS } from '../samplingPayload';
+import {
+  apiErrorDetail, buildSamplingPayload, fromSelect, labErrors, NONE, P_METHODS, K_METHODS,
+} from '../samplingPayload';
 
 describe('buildSamplingPayload', () => {
   it('maps form keys to API keys and drops empty fields', () => {
@@ -16,14 +18,35 @@ describe('buildSamplingPayload', () => {
   });
 });
 
-describe('methodErrors', () => {
+describe('labErrors', () => {
   it('requires a method when P or K is given', () => {
-    expect(methodErrors({ phosphorusAvailable: '18', potassiumExchangeable: '240',
-                          potassiumMethod: 'ammonium_acetate' }))
+    expect(labErrors({ phosphorusAvailable: '18', potassiumExchangeable: '240',
+                       potassiumMethod: 'ammonium_acetate', samplingDate: '2026-09-30' }))
       .toEqual({ phosphorusMethod: 'methodRequired' });
   });
-  it('is empty without P and K', () => {
-    expect(methodErrors({ clay: '20' })).toEqual({});
+  it('requires the value when a method is chosen', () => {
+    expect(labErrors({ potassiumMethod: 'ammonium_acetate' }))
+      .toEqual({ potassiumExchangeable: 'valueRequired' });
+  });
+  it('requires the sampling date for fertility values', () => {
+    expect(labErrors({ organicMatter: '2.1' })).toEqual({ samplingDate: 'dateRequired' });
+  });
+  it('is empty without lab fertility values', () => {
+    expect(labErrors({ clay: '20' })).toEqual({});
+  });
+});
+
+describe('select and API helpers', () => {
+  it('maps the none option to an empty value', () => {
+    expect(fromSelect(NONE)).toBe('');
+    expect(fromSelect('olsen')).toBe('olsen');
+  });
+  it('extracts the API detail from an SDK error', () => {
+    const err = new Error('HTTP 422 Unprocessable Entity: {"detail":"samplingDate must be YYYY-MM-DD"}');
+    expect(apiErrorDetail(err)).toBe('samplingDate must be YYYY-MM-DD');
+    const pyd = new Error('HTTP 422 : {"detail":[{"msg":"Input should be a valid number"}]}');
+    expect(apiErrorDetail(pyd)).toBe('Input should be a valid number');
+    expect(apiErrorDetail(new Error('network down'))).toBeNull();
   });
 });
 
