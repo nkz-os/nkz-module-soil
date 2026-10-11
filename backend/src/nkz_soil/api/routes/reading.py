@@ -1,3 +1,6 @@
+import logging
+
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 from nkz_platform_sdk import AuthContext
 
@@ -11,9 +14,11 @@ from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.pedotransfer.workability import WORKABILITY_METHOD
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
+from nkz_soil.util.ngsi import horizons_of
 from nkz_soil.util.nodata import sanitize_horizons
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 _DERIVED_KEYS = (
     "saturation", "totalPorosity", "pedotransferOutOfCalibration",
     "wetTillageLimit", "dryTillageLimit", "tillageLimitsMethod",
@@ -170,7 +175,7 @@ async def penetrometer_readings(
 
     points = []
     for e in entities:
-        horizons = e.get("horizons", {}).get("value", [])
+        horizons = horizons_of(e)
         if not horizons:
             continue
         # Penetrometer readings use a single depth interval per sampling point.
@@ -200,6 +205,88 @@ async def penetrometer_readings(
         })
 
     return {"points": points}
+
+
+_NON_LAB_KEYS = frozenset({"depthFrom", "depthTo", "penetrationResistance"})
+
+
+def _value(entity: dict, key: str):
+    raw = entity.get(key)
+    return raw.get("value") if isinstance(raw, dict) else raw
+
+
+def _linked_parcel(entity: dict) -> str | None:
+    # Orion may compact hasAgriParcel back as refAgriParcel (same IRI in the context).
+    rel = entity.get("hasAgriParcel") or entity.get("refAgriParcel")
+    return rel.get("object") if isinstance(rel, dict) else rel
+
+
+def _lab_entry(entity: dict, linked_by: str) -> dict | None:
+    horizons = [
+        {k: v for k, v in h.items() if v is not None} for h in horizons_of(entity)
+    ]
+    if not any(k not in _NON_LAB_KEYS for h in horizons for k in h):
+        return None
+    loc = _value(entity, "location") or {}
+    coords = loc.get("coordinates") if isinstance(loc, dict) else None
+    location = (
+        {"lat": coords[1], "lon": coords[0]}
+        if isinstance(coords, list) and len(coords) >= 2 else None
+    )
+    return {
+        "id": entity.get("id"),
+        "samplingDate": _value(entity, "samplingDate"),
+        "laboratoryReference": _value(entity, "laboratoryReference"),
+        "operator": _value(entity, "operator"),
+        "location": location,
+        "linkedBy": linked_by,
+        "dataSource": "lab_analysis",
+        "horizons": horizons,
+    }
+
+
+@router.get("/parcel/{parcel_id}/lab-analyses")
+@limiter.exempt
+async def parcel_lab_analyses(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH):
+    """Laboratory analyses of a parcel: points linked by hasAgriParcel plus legacy points
+    that lie inside the parcel geometry. Newest first; penetrometer-only points excluded."""
+    parcel_urn = (
+        parcel_id if parcel_id.startswith("urn:") else f"urn:ngsi-ld:AgriParcel:{parcel_id}"
+    )
+    async with OrionClient(auth.tenant_id) as orion:
+        linked = await orion.query_entities(
+            type="SoilSamplingPoint", q=parcel_ref_query(parcel_urn),
+        )
+        parcel = await orion.get_entity(parcel_urn)
+        geometry = _value(parcel, "location") if parcel else None
+        by_geometry: list[dict] = []
+        if isinstance(geometry, dict) and geometry.get("coordinates"):
+            try:
+                by_geometry = await orion.query_entities(
+                    type="SoilSamplingPoint", geometry=geometry,
+                )
+            except httpx.HTTPError as exc:
+                # Legacy points are a fallback: keep the linked analyses on a geo-query failure.
+                logger.warning(
+                    "lab-analyses geo-query failed tenant=%s parcel=%s: %s",
+                    auth.tenant_id, parcel_urn, exc,
+                )
+    if parcel is None and not linked:
+        raise HTTPException(status_code=404, detail="Parcel not found")
+
+    entries: dict[str, dict] = {}
+    for entity, how in [(e, "hasAgriParcel") for e in linked] + \
+                       [(e, "geometry") for e in by_geometry]:
+        if entity.get("id") in entries:
+            continue
+        linked_to = _linked_parcel(entity)
+        if how == "geometry" and linked_to and linked_to != parcel_urn:
+            continue  # inside the polygon but declared for another parcel
+        entry = _lab_entry(entity, how)
+        if entry:
+            entries[entry["id"]] = entry
+    analyses = sorted(entries.values(), key=lambda a: a["samplingDate"] or "", reverse=True)
+    return {"parcelId": parcel_urn, "analyses": analyses}
 
 
 @router.get("/tenant/quota")

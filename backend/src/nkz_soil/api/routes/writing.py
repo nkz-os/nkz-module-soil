@@ -8,6 +8,13 @@ from pydantic import BaseModel
 
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.config import BATCH_MAX_BYTES, BATCH_MAX_ROWS, CONTEXT_URL
+from nkz_soil.models.fertility import (
+    FERTILITY_FIELDS,
+    fertility_horizon_entries,
+    has_fertility_values,
+    validate_fertility,
+    validate_sampling_date,
+)
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 
 router = APIRouter()
@@ -39,6 +46,17 @@ class SamplingPointInput(BaseModel):
     cec: float | None = None
     coarse_fragments: float | None = None
     penetration_resistance: float | None = None
+    organic_matter: float | None = None
+    total_nitrogen: float | None = None
+    nitrate_n: float | None = None
+    ammonium_n: float | None = None
+    phosphorus_available: float | None = None
+    phosphorus_method: str | None = None
+    potassium_exchangeable: float | None = None
+    potassium_method: str | None = None
+    carbonates: float | None = None
+    active_lime: float | None = None
+    parcel_id: str | None = None
     laboratory_reference: str | None = None
     sampling_date: str | None = None
     operator: str | None = None
@@ -71,41 +89,14 @@ async def create_sampling_point(
             status_code=422, detail="bulkDensity must be 0.1-2.65 g/cm3"
         )
 
-    entity_id = f"urn:ngsi-ld:SoilSamplingPoint:{uuid.uuid4()}"
-    entity = {
-        "id": entity_id,
-        "type": "SoilSamplingPoint",
-        "@context": [CONTEXT_URL],
-        "location": {
-            "type": "GeoProperty",
-            "value": {"type": "Point", "coordinates": [body.lon, body.lat]},
-        },
-        "samplingDate": {"type": "Property", "value": body.sampling_date},
-        "laboratoryReference": {
-            "type": "Property",
-            "value": body.laboratory_reference,
-        },
-        "horizons": {
-            "type": "Property",
-            "value": [
-                {
-                    "depthFrom": body.depth_from,
-                    "depthTo": body.depth_to,
-                    "sand": body.sand,
-                    "silt": body.silt,
-                    "clay": body.clay,
-                    "organicCarbon": body.organic_carbon,
-                    "bulkDensity": body.bulk_density,
-                    "ph": body.ph,
-                    "cec": body.cec,
-                    "coarseFragments": body.coarse_fragments,
-                    "penetrationResistance": body.penetration_resistance,
-                }
-            ],
-        },
-        "operator": {"type": "Property", "value": body.operator},
-    }
+    values = body.model_dump()
+    errors = validate_fertility(values) + validate_sampling_date(
+        values.get("sampling_date"), required=has_fertility_values(values),
+    )
+    if errors:
+        raise HTTPException(status_code=422, detail="; ".join(errors))
 
+    entity_id, entity = _sampling_point_entity(body.model_dump())
     async with OrionClient(tenant_id) as orion:
         await orion.create_entity(entity)
 
@@ -162,6 +153,8 @@ _CSV_COLUMNS = [
     "sand", "silt", "clay", "organicCarbon", "ph",
     "cec", "bulkDensity", "coarseFragments", "penetrationResistance",
     "labReference", "samplingDate", "operator",
+    *(key for key, _lo, _hi in FERTILITY_FIELDS.values()),
+    "phosphorusMethod", "potassiumMethod", "parcelId",
 ]
 
 # Aliases for common variations
@@ -170,6 +163,11 @@ _CSV_ALIASES = {
     "organic_carbon": "organicCarbon", "bulk_density": "bulkDensity",
     "coarse_fragments": "coarseFragments", "penetration_resistance": "penetrationResistance",
     "lab_reference": "labReference", "sampling_date": "samplingDate",
+    "organic_matter": "organicMatter", "total_nitrogen": "totalNitrogen",
+    "nitrate_n": "nitrateN", "ammonium_n": "ammoniumN",
+    "phosphorus_available": "phosphorusAvailable", "phosphorus_method": "phosphorusMethod",
+    "potassium_exchangeable": "potassiumExchangeable", "potassium_method": "potassiumMethod",
+    "active_lime": "activeLime", "parcel_id": "parcelId",
 }
 
 
@@ -248,6 +246,23 @@ def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
         except ValueError:
             errors.append("invalid bulkDensity")
 
+    fertility: dict = {}
+    for name, (key, _lo, _hi) in FERTILITY_FIELDS.items():
+        raw = row.get(key, "")
+        if raw:
+            try:
+                fertility[name] = float(raw)
+            except ValueError:
+                errors.append(f"invalid {key}")
+    if row.get("phosphorusMethod"):
+        fertility["phosphorus_method"] = row["phosphorusMethod"].strip()
+    if row.get("potassiumMethod"):
+        fertility["potassium_method"] = row["potassiumMethod"].strip()
+    errors.extend(validate_fertility(fertility))
+    errors.extend(validate_sampling_date(
+        row.get("samplingDate", "").strip() or None, required=has_fertility_values(fertility),
+    ))
+
     if errors:
         return None, f"Row {row_num}: {'; '.join(errors)}"
 
@@ -274,12 +289,33 @@ def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
     cleaned["laboratory_reference"] = row.get("labReference", "") or None
     cleaned["sampling_date"] = row.get("samplingDate", "") or None
     cleaned["operator"] = row.get("operator", "") or None
+    cleaned.update(fertility)
+    cleaned["parcel_id"] = row.get("parcelId", "").strip() or None
 
     return cleaned, None
 
 
+_HORIZON_BASE = (
+    ("sand", "sand"), ("silt", "silt"), ("clay", "clay"),
+    ("organicCarbon", "organic_carbon"), ("bulkDensity", "bulk_density"), ("ph", "ph"),
+    ("cec", "cec"), ("coarseFragments", "coarse_fragments"),
+    ("penetrationResistance", "penetration_resistance"),
+)
+_OPTIONAL_ATTRS = (
+    ("samplingDate", "sampling_date"), ("laboratoryReference", "laboratory_reference"),
+    ("operator", "operator"),
+)
+
+
 def _sampling_point_entity(cleaned: dict) -> tuple[str, dict]:
+    """SoilSamplingPoint for one sampled depth. NGSI-LD has no null attribute value,
+    so absent optionals are omitted, both as attributes and inside the horizon."""
     entity_id = f"urn:ngsi-ld:SoilSamplingPoint:{uuid.uuid4()}"
+    horizon: dict = {"depthFrom": cleaned["depth_from"], "depthTo": cleaned["depth_to"]}
+    for key, name in _HORIZON_BASE:
+        if cleaned.get(name) is not None:
+            horizon[key] = cleaned[name]
+    horizon.update(fertility_horizon_entries(cleaned))
     entity = {
         "id": entity_id,
         "type": "SoilSamplingPoint",
@@ -288,31 +324,15 @@ def _sampling_point_entity(cleaned: dict) -> tuple[str, dict]:
             "type": "GeoProperty",
             "value": {"type": "Point", "coordinates": [cleaned["lon"], cleaned["lat"]]},
         },
-        "samplingDate": {"type": "Property", "value": cleaned["sampling_date"]},
-        "laboratoryReference": {
-            "type": "Property",
-            "value": cleaned["laboratory_reference"],
-        },
-        "horizons": {
-            "type": "Property",
-            "value": [
-                {
-                    "depthFrom": cleaned["depth_from"],
-                    "depthTo": cleaned["depth_to"],
-                    "sand": cleaned.get("sand"),
-                    "silt": cleaned.get("silt"),
-                    "clay": cleaned.get("clay"),
-                    "organicCarbon": cleaned.get("organic_carbon"),
-                    "bulkDensity": cleaned.get("bulk_density"),
-                    "ph": cleaned.get("ph"),
-                    "cec": cleaned.get("cec"),
-                    "coarseFragments": cleaned.get("coarse_fragments"),
-                    "penetrationResistance": cleaned.get("penetration_resistance"),
-                }
-            ],
-        },
-        "operator": {"type": "Property", "value": cleaned["operator"]},
+        "horizons": {"type": "Property", "value": [horizon]},
     }
+    for attr, name in _OPTIONAL_ATTRS:
+        if cleaned.get(name):
+            entity[attr] = {"type": "Property", "value": cleaned[name]}
+    if cleaned.get("parcel_id"):
+        entity["hasAgriParcel"] = {
+            "type": "Relationship", "object": _parcel_urn(cleaned["parcel_id"]),
+        }
     return entity_id, entity
 
 
@@ -326,7 +346,9 @@ async def create_sampling_points_batch(
 
     CSV columns: lat, lon, depthFrom, depthTo, sand, silt, clay,
     organicCarbon, ph, cec, bulkDensity, coarseFragments,
-    penetrationResistance, labReference, samplingDate, operator.
+    penetrationResistance, labReference, samplingDate, operator, organicMatter,
+    totalNitrogen, nitrateN, ammoniumN, phosphorusAvailable, phosphorusMethod,
+    potassiumExchangeable, potassiumMethod, carbonates, activeLime, parcelId.
     """
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=422, detail="File must be a CSV")

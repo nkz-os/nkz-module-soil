@@ -10,6 +10,7 @@ from nkz_soil.models.domain import (
 )
 from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.storage.orion import OrionClient, current_tenant
+from nkz_soil.util.ngsi import horizons_of
 
 
 class LabAnalysisProvider:
@@ -40,8 +41,7 @@ class LabAnalysisProvider:
 
         all_horizons = []
         for point in points:
-            raw_horizons = point.get("horizons", {}).get("value", [])
-            for h in raw_horizons:
+            for h in horizons_of(point):
                 h_obj = Horizon(
                     depth_from=h.get("depthFrom", 0),
                     depth_to=h.get("depthTo", 100),

@@ -190,3 +190,19 @@ def test_parcel_summary_exposes_tillage_limits_and_method(client, mock_orion):
     assert body["horizons"][1]["wetTillageLimit"] is None
     assert body["horizons"][1]["tillageLimitsMethod"] is None
     assert body["workabilityMethod"]["version"] == "1"
+
+
+def test_penetrometer_single_horizon_unwrapped(client, mock_orion):
+    mock_orion.query_entities.return_value = [{
+        "id": "urn:ngsi-ld:SoilSamplingPoint:p1",
+        "location": {"type": "GeoProperty",
+                     "value": {"type": "Point", "coordinates": [-1.6, 42.8]}},
+        "samplingDate": {"type": "Property", "value": "2026-09-30"},
+        "horizons": {"type": "Property",
+                     "value": {"depthFrom": 0, "depthTo": 30, "penetrationResistance": 2.4}},
+    }]
+    resp = client.get("/v1/soil/penetrometer/parcel-1",
+                      headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1",
+                               "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    assert resp.json()["points"][0]["resistance"] == 2.4
