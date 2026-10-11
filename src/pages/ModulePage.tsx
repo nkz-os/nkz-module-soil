@@ -7,6 +7,8 @@ import { useEntities } from '@nekazari/module-kit';
 import { ngsiValue, soilHorizons } from '../lib/ngsiValue';
 import { sanitizeHorizons, sanitizeCompaction, isSoilgridsNodata } from '../lib/sanitizeHorizon';
 import { SoilProfileCard } from '../components/SoilProfileCard';
+import { Select } from '@nekazari/ui-kit';
+import { buildSamplingPayload, methodErrors, P_METHODS, K_METHODS } from '../lib/samplingPayload';
 
 type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
 
@@ -509,6 +511,14 @@ function ManualSamplingTab() {
   const api = useSoilApi();
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  const { data: parcels } = useEntities<NgsiLdEntity>('AgriParcel');
+  const parcelOptions = (parcels || []).map((p) => ({
+    value: p.id as string,
+    label: ngsiValue<string>((p as NgsiLdEntity).name) ?? (p.id as string),
+  }));
+  const pMethodOptions = P_METHODS.map((m) => ({ value: m, label: t(`methods.p.${m}`) }));
+  const kMethodOptions = K_METHODS.map((m) => ({ value: m, label: t(`methods.k.${m}`) }));
+
   const fields = [
     { key: 'lat', label: t('fields.lat'), type: 'number', required: true },
     { key: 'lon', label: t('fields.lon'), type: 'number', required: true },
@@ -518,15 +528,25 @@ function ManualSamplingTab() {
     { key: 'silt', label: t('fields.silt'), type: 'number' },
     { key: 'clay', label: t('fields.clay'), type: 'number' },
     { key: 'organicCarbon', label: t('fields.organicCarbon'), type: 'number' },
+    { key: 'organicMatter', label: t('fields.organicMatter'), type: 'number' },
     { key: 'ph', label: t('fields.ph'), type: 'number' },
     { key: 'bulkDensity', label: t('fields.bulkDensity'), type: 'number' },
+    { key: 'totalNitrogen', label: t('fields.totalNitrogen'), type: 'number' },
+    { key: 'nitrateN', label: t('fields.nitrateN'), type: 'number' },
+    { key: 'ammoniumN', label: t('fields.ammoniumN'), type: 'number' },
+    { key: 'phosphorusAvailable', label: t('fields.phosphorusAvailable'), type: 'number' },
+    { key: 'potassiumExchangeable', label: t('fields.potassiumExchangeable'), type: 'number' },
+    { key: 'carbonates', label: t('fields.carbonates'), type: 'number' },
+    { key: 'activeLime', label: t('fields.activeLime'), type: 'number' },
     { key: 'penetrationResistance', label: t('fields.penetrationResistance'), type: 'number' },
+    { key: 'labReference', label: t('fields.labReference'), type: 'text' },
     { key: 'samplingDate', label: t('fields.samplingDate'), type: 'date' },
     { key: 'operator', label: t('fields.operator'), type: 'text' },
   ];
+  const selectKeys = ['parcelId', 'phosphorusMethod', 'potassiumMethod'];
 
   const [form, setForm] = useState<Record<string, string>>(
-    Object.fromEntries(fields.map((f) => [f.key, '']))
+    Object.fromEntries([...fields.map((f) => f.key), ...selectKeys].map((k) => [k, '']))
   );
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
@@ -560,6 +580,9 @@ function ManualSamplingTab() {
     const bd = form.bulkDensity ? parseFloat(form.bulkDensity) : null;
     if (bd !== null && (bd < 0.1 || bd > 2.65)) errors.bulkDensity = t('validation.bulkDensity');
 
+    for (const [key, code] of Object.entries(methodErrors(form))) {
+      errors[key] = t(`validation.${code}`);
+    }
     setValidationErrors(errors);
     return Object.values(errors);
   }, [form, t]);
@@ -581,23 +604,9 @@ function ManualSamplingTab() {
     if (errors.length > 0) return;
 
     try {
-      await api.uploadSamplingPoint({
-        lat: parseFloat(form.lat),
-        lon: parseFloat(form.lon),
-        depth_from: parseInt(form.depthFrom),
-        depth_to: parseInt(form.depthTo),
-        sand: form.sand ? parseFloat(form.sand) : undefined,
-        silt: form.silt ? parseFloat(form.silt) : undefined,
-        clay: form.clay ? parseFloat(form.clay) : undefined,
-        organic_carbon: form.organicCarbon ? parseFloat(form.organicCarbon) : undefined,
-        ph: form.ph ? parseFloat(form.ph) : undefined,
-        bulk_density: form.bulkDensity ? parseFloat(form.bulkDensity) : undefined,
-        penetration_resistance: form.penetrationResistance ? parseFloat(form.penetrationResistance) : undefined,
-        sampling_date: form.samplingDate || undefined,
-        operator: form.operator || undefined,
-      });
+      await api.uploadSamplingPoint(buildSamplingPayload(form));
       setResult({ type: 'success', message: t('success') });
-      setForm(Object.fromEntries(fields.map((f) => [f.key, ''])));
+      setForm(Object.fromEntries([...fields.map((f) => f.key), ...selectKeys].map((k) => [k, ''])));
     } catch {
       setResult({ type: 'error', message: t('error') });
     }
@@ -639,6 +648,28 @@ function ManualSamplingTab() {
             />
             {validationErrors[field.key] && (
               <p className="text-nkz-xs text-nkz-danger mt-1">{validationErrors[field.key]}</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mt-4">
+        {([
+          ['parcelId', t('fields.parcel'), parcelOptions],
+          ['phosphorusMethod', t('fields.phosphorusMethod'), pMethodOptions],
+          ['potassiumMethod', t('fields.potassiumMethod'), kMethodOptions],
+        ] as const).map(([key, label, options]) => (
+          <div key={key}>
+            <label className="block text-nkz-xs mb-1">{label}</label>
+            <Select
+              value={form[key]}
+              onValueChange={(v) => handleChange(key, v)}
+              options={[...options]}
+              placeholder={t('fields.choose')}
+              error={Boolean(validationErrors[key])}
+            />
+            {validationErrors[key] && (
+              <p className="text-nkz-xs text-nkz-danger mt-1">{validationErrors[key]}</p>
             )}
           </div>
         ))}
