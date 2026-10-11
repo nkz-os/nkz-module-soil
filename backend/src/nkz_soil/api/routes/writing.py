@@ -8,7 +8,11 @@ from pydantic import BaseModel
 
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.config import BATCH_MAX_BYTES, BATCH_MAX_ROWS, CONTEXT_URL
-from nkz_soil.models.fertility import fertility_horizon_entries, validate_fertility
+from nkz_soil.models.fertility import (
+    FERTILITY_FIELDS,
+    fertility_horizon_entries,
+    validate_fertility,
+)
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 
 router = APIRouter()
@@ -144,6 +148,8 @@ _CSV_COLUMNS = [
     "sand", "silt", "clay", "organicCarbon", "ph",
     "cec", "bulkDensity", "coarseFragments", "penetrationResistance",
     "labReference", "samplingDate", "operator",
+    *(key for key, _lo, _hi in FERTILITY_FIELDS.values()),
+    "phosphorusMethod", "potassiumMethod", "parcelId",
 ]
 
 # Aliases for common variations
@@ -152,6 +158,11 @@ _CSV_ALIASES = {
     "organic_carbon": "organicCarbon", "bulk_density": "bulkDensity",
     "coarse_fragments": "coarseFragments", "penetration_resistance": "penetrationResistance",
     "lab_reference": "labReference", "sampling_date": "samplingDate",
+    "organic_matter": "organicMatter", "total_nitrogen": "totalNitrogen",
+    "nitrate_n": "nitrateN", "ammonium_n": "ammoniumN",
+    "phosphorus_available": "phosphorusAvailable", "phosphorus_method": "phosphorusMethod",
+    "potassium_exchangeable": "potassiumExchangeable", "potassium_method": "potassiumMethod",
+    "active_lime": "activeLime", "parcel_id": "parcelId",
 }
 
 
@@ -230,6 +241,20 @@ def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
         except ValueError:
             errors.append("invalid bulkDensity")
 
+    fertility: dict = {}
+    for name, (key, _lo, _hi) in FERTILITY_FIELDS.items():
+        raw = row.get(key, "")
+        if raw:
+            try:
+                fertility[name] = float(raw)
+            except ValueError:
+                errors.append(f"invalid {key}")
+    if row.get("phosphorusMethod"):
+        fertility["phosphorus_method"] = row["phosphorusMethod"].strip()
+    if row.get("potassiumMethod"):
+        fertility["potassium_method"] = row["potassiumMethod"].strip()
+    errors.extend(validate_fertility(fertility))
+
     if errors:
         return None, f"Row {row_num}: {'; '.join(errors)}"
 
@@ -256,6 +281,8 @@ def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
     cleaned["laboratory_reference"] = row.get("labReference", "") or None
     cleaned["sampling_date"] = row.get("samplingDate", "") or None
     cleaned["operator"] = row.get("operator", "") or None
+    cleaned.update(fertility)
+    cleaned["parcel_id"] = row.get("parcelId", "").strip() or None
 
     return cleaned, None
 
@@ -311,7 +338,9 @@ async def create_sampling_points_batch(
 
     CSV columns: lat, lon, depthFrom, depthTo, sand, silt, clay,
     organicCarbon, ph, cec, bulkDensity, coarseFragments,
-    penetrationResistance, labReference, samplingDate, operator.
+    penetrationResistance, labReference, samplingDate, operator, organicMatter,
+    totalNitrogen, nitrateN, ammoniumN, phosphorusAvailable, phosphorusMethod,
+    potassiumExchangeable, potassiumMethod, carbonates, activeLime, parcelId.
     """
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=422, detail="File must be a CSV")

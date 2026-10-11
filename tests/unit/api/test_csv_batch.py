@@ -123,3 +123,28 @@ def test_csv_batch_with_aliases(client, mock_orion):
     data = resp.json()
     assert data["created"] == 1
     assert data["errors"] == 0
+
+
+FERTILITY_CSV = """lat,lon,depthFrom,depthTo,clay,ph,organicMatter,phosphorusAvailable,phosphorusMethod,potassium_exchangeable,potassium_method,parcelId
+42.8,-1.6,0,30,22,7.9,2.1,18,olsen,240,ammonium_acetate,parcel-1
+42.9,-1.5,0,30,22,7.9,2.1,18,,240,ammonium_acetate,parcel-1
+"""
+
+
+def test_csv_batch_fertility_columns(client, mock_orion):
+    resp = client.post(
+        "/v1/soil/sampling-points/batch",
+        files={"file": ("lab.csv", FERTILITY_CSV, "text/csv")},
+        headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["created"] == 1
+    assert data["errors"] == 1
+    assert data["errorDetails"][0]["row"] == 3
+    assert "phosphorusMethod" in data["errorDetails"][0]["error"]
+    entity = mock_orion.create_entities_batch.call_args.args[0][0]
+    horizon = entity["horizons"]["value"][0]
+    assert horizon["potassiumExchangeable"] == 240.0
+    assert horizon["potassiumMethod"] == "ammonium_acetate"
+    assert entity["hasAgriParcel"]["object"] == "urn:ngsi-ld:AgriParcel:parcel-1"
