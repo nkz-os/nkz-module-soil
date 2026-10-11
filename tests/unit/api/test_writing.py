@@ -106,3 +106,65 @@ def test_create_survey_invalid_type(client, mock_orion):
         headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"},
     )
     assert resp.status_code == 422
+
+
+HEADERS = {"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"}
+
+
+def _no_nulls(obj):
+    if isinstance(obj, dict):
+        return all(v is not None and _no_nulls(v) for v in obj.values())
+    if isinstance(obj, list):
+        return all(_no_nulls(v) for v in obj)
+    return True
+
+
+def test_create_sampling_point_with_fertility_and_parcel(client, mock_orion):
+    resp = client.post("/v1/soil/sampling-points", json={
+        "lat": 42.8, "lon": -1.6, "depth_from": 0, "depth_to": 30,
+        "clay": 22, "ph": 7.9, "organic_matter": 2.1, "nitrate_n": 14,
+        "phosphorus_available": 18, "phosphorus_method": "olsen",
+        "potassium_exchangeable": 240, "potassium_method": "ammonium_acetate",
+        "laboratory_reference": "LAB-2026-118", "sampling_date": "2026-09-30",
+        "parcel_id": "parcel-1",
+    }, headers=HEADERS)
+    assert resp.status_code == 200
+    entity = mock_orion.create_entity.call_args.args[0]
+    horizon = entity["horizons"]["value"][0]
+    assert horizon["organicMatter"] == 2.1
+    assert horizon["phosphorusAvailable"] == 18
+    assert horizon["phosphorusMethod"] == "olsen"
+    assert horizon["potassiumMethod"] == "ammonium_acetate"
+    assert entity["hasAgriParcel"] == {"type": "Relationship",
+                                       "object": "urn:ngsi-ld:AgriParcel:parcel-1"}
+    assert entity["laboratoryReference"]["value"] == "LAB-2026-118"
+
+
+def test_create_sampling_point_omits_empty_optionals(client, mock_orion):
+    resp = client.post("/v1/soil/sampling-points", json={
+        "lat": 42.8, "lon": -1.6, "depth_from": 0, "depth_to": 30, "ph": 7.0,
+    }, headers=HEADERS)
+    assert resp.status_code == 200
+    entity = mock_orion.create_entity.call_args.args[0]
+    assert _no_nulls(entity)
+    assert "samplingDate" not in entity and "hasAgriParcel" not in entity
+    assert entity["horizons"]["value"][0] == {"depthFrom": 0, "depthTo": 30, "ph": 7.0}
+
+
+def test_create_sampling_point_p_without_method_is_422(client, mock_orion):
+    resp = client.post("/v1/soil/sampling-points", json={
+        "lat": 42.8, "lon": -1.6, "depth_from": 0, "depth_to": 30,
+        "phosphorus_available": 18,
+    }, headers=HEADERS)
+    assert resp.status_code == 422
+    assert "phosphorusMethod" in resp.json()["detail"]
+    mock_orion.create_entity.assert_not_called()
+
+
+def test_create_sampling_point_urn_parcel_kept(client, mock_orion):
+    client.post("/v1/soil/sampling-points", json={
+        "lat": 42.8, "lon": -1.6, "depth_from": 0, "depth_to": 30, "ph": 7.0,
+        "parcel_id": "urn:ngsi-ld:AgriParcel:abc",
+    }, headers=HEADERS)
+    entity = mock_orion.create_entity.call_args.args[0]
+    assert entity["hasAgriParcel"]["object"] == "urn:ngsi-ld:AgriParcel:abc"

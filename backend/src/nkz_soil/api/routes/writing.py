@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.config import BATCH_MAX_BYTES, BATCH_MAX_ROWS, CONTEXT_URL
+from nkz_soil.models.fertility import fertility_horizon_entries, validate_fertility
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 
 router = APIRouter()
@@ -39,6 +40,17 @@ class SamplingPointInput(BaseModel):
     cec: float | None = None
     coarse_fragments: float | None = None
     penetration_resistance: float | None = None
+    organic_matter: float | None = None
+    total_nitrogen: float | None = None
+    nitrate_n: float | None = None
+    ammonium_n: float | None = None
+    phosphorus_available: float | None = None
+    phosphorus_method: str | None = None
+    potassium_exchangeable: float | None = None
+    potassium_method: str | None = None
+    carbonates: float | None = None
+    active_lime: float | None = None
+    parcel_id: str | None = None
     laboratory_reference: str | None = None
     sampling_date: str | None = None
     operator: str | None = None
@@ -71,41 +83,11 @@ async def create_sampling_point(
             status_code=422, detail="bulkDensity must be 0.1-2.65 g/cm3"
         )
 
-    entity_id = f"urn:ngsi-ld:SoilSamplingPoint:{uuid.uuid4()}"
-    entity = {
-        "id": entity_id,
-        "type": "SoilSamplingPoint",
-        "@context": [CONTEXT_URL],
-        "location": {
-            "type": "GeoProperty",
-            "value": {"type": "Point", "coordinates": [body.lon, body.lat]},
-        },
-        "samplingDate": {"type": "Property", "value": body.sampling_date},
-        "laboratoryReference": {
-            "type": "Property",
-            "value": body.laboratory_reference,
-        },
-        "horizons": {
-            "type": "Property",
-            "value": [
-                {
-                    "depthFrom": body.depth_from,
-                    "depthTo": body.depth_to,
-                    "sand": body.sand,
-                    "silt": body.silt,
-                    "clay": body.clay,
-                    "organicCarbon": body.organic_carbon,
-                    "bulkDensity": body.bulk_density,
-                    "ph": body.ph,
-                    "cec": body.cec,
-                    "coarseFragments": body.coarse_fragments,
-                    "penetrationResistance": body.penetration_resistance,
-                }
-            ],
-        },
-        "operator": {"type": "Property", "value": body.operator},
-    }
+    errors = validate_fertility(body.model_dump())
+    if errors:
+        raise HTTPException(status_code=422, detail="; ".join(errors))
 
+    entity_id, entity = _sampling_point_entity(body.model_dump())
     async with OrionClient(tenant_id) as orion:
         await orion.create_entity(entity)
 
@@ -278,8 +260,27 @@ def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
     return cleaned, None
 
 
+_HORIZON_BASE = (
+    ("sand", "sand"), ("silt", "silt"), ("clay", "clay"),
+    ("organicCarbon", "organic_carbon"), ("bulkDensity", "bulk_density"), ("ph", "ph"),
+    ("cec", "cec"), ("coarseFragments", "coarse_fragments"),
+    ("penetrationResistance", "penetration_resistance"),
+)
+_OPTIONAL_ATTRS = (
+    ("samplingDate", "sampling_date"), ("laboratoryReference", "laboratory_reference"),
+    ("operator", "operator"),
+)
+
+
 def _sampling_point_entity(cleaned: dict) -> tuple[str, dict]:
+    """SoilSamplingPoint for one sampled depth. NGSI-LD has no null attribute value,
+    so absent optionals are omitted, both as attributes and inside the horizon."""
     entity_id = f"urn:ngsi-ld:SoilSamplingPoint:{uuid.uuid4()}"
+    horizon: dict = {"depthFrom": cleaned["depth_from"], "depthTo": cleaned["depth_to"]}
+    for key, name in _HORIZON_BASE:
+        if cleaned.get(name) is not None:
+            horizon[key] = cleaned[name]
+    horizon.update(fertility_horizon_entries(cleaned))
     entity = {
         "id": entity_id,
         "type": "SoilSamplingPoint",
@@ -288,31 +289,15 @@ def _sampling_point_entity(cleaned: dict) -> tuple[str, dict]:
             "type": "GeoProperty",
             "value": {"type": "Point", "coordinates": [cleaned["lon"], cleaned["lat"]]},
         },
-        "samplingDate": {"type": "Property", "value": cleaned["sampling_date"]},
-        "laboratoryReference": {
-            "type": "Property",
-            "value": cleaned["laboratory_reference"],
-        },
-        "horizons": {
-            "type": "Property",
-            "value": [
-                {
-                    "depthFrom": cleaned["depth_from"],
-                    "depthTo": cleaned["depth_to"],
-                    "sand": cleaned.get("sand"),
-                    "silt": cleaned.get("silt"),
-                    "clay": cleaned.get("clay"),
-                    "organicCarbon": cleaned.get("organic_carbon"),
-                    "bulkDensity": cleaned.get("bulk_density"),
-                    "ph": cleaned.get("ph"),
-                    "cec": cleaned.get("cec"),
-                    "coarseFragments": cleaned.get("coarse_fragments"),
-                    "penetrationResistance": cleaned.get("penetration_resistance"),
-                }
-            ],
-        },
-        "operator": {"type": "Property", "value": cleaned["operator"]},
+        "horizons": {"type": "Property", "value": [horizon]},
     }
+    for attr, name in _OPTIONAL_ATTRS:
+        if cleaned.get(name):
+            entity[attr] = {"type": "Property", "value": cleaned[name]}
+    if cleaned.get("parcel_id"):
+        entity["hasAgriParcel"] = {
+            "type": "Relationship", "object": _parcel_urn(cleaned["parcel_id"]),
+        }
     return entity_id, entity
 
 
