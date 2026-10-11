@@ -5,7 +5,9 @@ bounds, not agronomic thresholds.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
+from datetime import date
 
 # input name -> (horizon key, min, max)
 FERTILITY_FIELDS: dict[str, tuple[str, float, float]] = {
@@ -75,3 +77,24 @@ def fertility_horizon_entries(values: Mapping[str, object]) -> dict[str, object]
     if values.get("potassium_method"):
         out["potassiumMethod"] = values["potassium_method"]
     return out
+
+
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def has_fertility_values(values: Mapping[str, object]) -> bool:
+    return any(values.get(name) is not None for name in FERTILITY_FIELDS)
+
+
+def validate_sampling_date(value: object, required: bool) -> list[str]:
+    """ISO calendar date (YYYY-MM-DD). A lab fertility analysis needs its date: plans judge
+    its age and whether it was taken before sowing."""
+    if value is None or value == "":
+        return ["samplingDate is required for laboratory fertility values"] if required else []
+    if not isinstance(value, str) or not _ISO_DATE.match(value):
+        return ["samplingDate must be YYYY-MM-DD"]
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        return ["samplingDate must be YYYY-MM-DD"]
+    return []

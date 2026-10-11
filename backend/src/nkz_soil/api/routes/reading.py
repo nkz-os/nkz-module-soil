@@ -1,3 +1,6 @@
+import logging
+
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 from nkz_platform_sdk import AuthContext
 
@@ -15,6 +18,7 @@ from nkz_soil.util.ngsi import horizons_of
 from nkz_soil.util.nodata import sanitize_horizons
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 _DERIVED_KEYS = (
     "saturation", "totalPorosity", "pedotransferOutOfCalibration",
     "wetTillageLimit", "dryTillageLimit", "tillageLimitsMethod",
@@ -211,6 +215,12 @@ def _value(entity: dict, key: str):
     return raw.get("value") if isinstance(raw, dict) else raw
 
 
+def _linked_parcel(entity: dict) -> str | None:
+    # Orion may compact hasAgriParcel back as refAgriParcel (same IRI in the context).
+    rel = entity.get("hasAgriParcel") or entity.get("refAgriParcel")
+    return rel.get("object") if isinstance(rel, dict) else rel
+
+
 def _lab_entry(entity: dict, linked_by: str) -> dict | None:
     horizons = [
         {k: v for k, v in h.items() if v is not None} for h in horizons_of(entity)
@@ -249,10 +259,18 @@ async def parcel_lab_analyses(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH)
         )
         parcel = await orion.get_entity(parcel_urn)
         geometry = _value(parcel, "location") if parcel else None
-        by_geometry = (
-            await orion.query_entities(type="SoilSamplingPoint", geometry=geometry)
-            if isinstance(geometry, dict) and geometry.get("coordinates") else []
-        )
+        by_geometry: list[dict] = []
+        if isinstance(geometry, dict) and geometry.get("coordinates"):
+            try:
+                by_geometry = await orion.query_entities(
+                    type="SoilSamplingPoint", geometry=geometry,
+                )
+            except httpx.HTTPError as exc:
+                # Legacy points are a fallback: keep the linked analyses on a geo-query failure.
+                logger.warning(
+                    "lab-analyses geo-query failed tenant=%s parcel=%s: %s",
+                    auth.tenant_id, parcel_urn, exc,
+                )
     if parcel is None and not linked:
         raise HTTPException(status_code=404, detail="Parcel not found")
 
@@ -261,6 +279,9 @@ async def parcel_lab_analyses(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH)
                        [(e, "geometry") for e in by_geometry]:
         if entity.get("id") in entries:
             continue
+        linked_to = _linked_parcel(entity)
+        if how == "geometry" and linked_to and linked_to != parcel_urn:
+            continue  # inside the polygon but declared for another parcel
         entry = _lab_entry(entity, how)
         if entry:
             entries[entry["id"]] = entry

@@ -5,6 +5,7 @@ from nkz_soil.models.fertility import (
     P_METHODS,
     fertility_horizon_entries,
     validate_fertility,
+    validate_sampling_date,
 )
 
 FULL = {
@@ -75,3 +76,19 @@ def test_p_methods_are_the_engine_table():
                          "ammonium_acetate_edta", "calcium_lactate",
                          "calcium_lactate_acetate", "water", "cacl2"}
     assert "ammonium_acetate" in K_METHODS
+
+
+@pytest.mark.parametrize("value", ["2026-09-30", "2024-02-29"])
+def test_iso_sampling_date_accepted(value):
+    assert validate_sampling_date(value, required=True) == []
+
+
+@pytest.mark.parametrize("value", ["15/03/2025", "2025-3-15", "2025-02-30", "20250315"])
+def test_non_iso_sampling_date_rejected(value):
+    assert validate_sampling_date(value, required=False) == ["samplingDate must be YYYY-MM-DD"]
+
+
+def test_sampling_date_required_for_fertility_values():
+    assert validate_sampling_date(None, required=True) == [
+        "samplingDate is required for laboratory fertility values"]
+    assert validate_sampling_date(None, required=False) == []

@@ -11,7 +11,9 @@ from nkz_soil.config import BATCH_MAX_BYTES, BATCH_MAX_ROWS, CONTEXT_URL
 from nkz_soil.models.fertility import (
     FERTILITY_FIELDS,
     fertility_horizon_entries,
+    has_fertility_values,
     validate_fertility,
+    validate_sampling_date,
 )
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 
@@ -87,7 +89,10 @@ async def create_sampling_point(
             status_code=422, detail="bulkDensity must be 0.1-2.65 g/cm3"
         )
 
-    errors = validate_fertility(body.model_dump())
+    values = body.model_dump()
+    errors = validate_fertility(values) + validate_sampling_date(
+        values.get("sampling_date"), required=has_fertility_values(values),
+    )
     if errors:
         raise HTTPException(status_code=422, detail="; ".join(errors))
 
@@ -254,6 +259,9 @@ def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
     if row.get("potassiumMethod"):
         fertility["potassium_method"] = row["potassiumMethod"].strip()
     errors.extend(validate_fertility(fertility))
+    errors.extend(validate_sampling_date(
+        row.get("samplingDate", "").strip() or None, required=has_fertility_values(fertility),
+    ))
 
     if errors:
         return None, f"Row {row_num}: {'; '.join(errors)}"

@@ -168,3 +168,22 @@ def test_create_sampling_point_urn_parcel_kept(client, mock_orion):
     }, headers=HEADERS)
     entity = mock_orion.create_entity.call_args.args[0]
     assert entity["hasAgriParcel"]["object"] == "urn:ngsi-ld:AgriParcel:abc"
+
+
+def test_create_sampling_point_non_iso_date_is_422(client, mock_orion):
+    resp = client.post("/v1/soil/sampling-points", json={
+        "lat": 42.8, "lon": -1.6, "depth_from": 0, "depth_to": 30, "ph": 7.0,
+        "sampling_date": "15/03/2025",
+    }, headers=HEADERS)
+    assert resp.status_code == 422
+    assert "YYYY-MM-DD" in resp.json()["detail"]
+    mock_orion.create_entity.assert_not_called()
+
+
+def test_create_sampling_point_fertility_requires_date(client, mock_orion):
+    resp = client.post("/v1/soil/sampling-points", json={
+        "lat": 42.8, "lon": -1.6, "depth_from": 0, "depth_to": 30,
+        "organic_matter": 2.1,
+    }, headers=HEADERS)
+    assert resp.status_code == 422
+    assert "samplingDate is required" in resp.json()["detail"]

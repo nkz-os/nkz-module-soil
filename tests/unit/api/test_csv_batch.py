@@ -125,9 +125,10 @@ def test_csv_batch_with_aliases(client, mock_orion):
     assert data["errors"] == 0
 
 
-FERTILITY_CSV = """lat,lon,depthFrom,depthTo,clay,ph,organicMatter,phosphorusAvailable,phosphorusMethod,potassium_exchangeable,potassium_method,parcelId
-42.8,-1.6,0,30,22,7.9,2.1,18,olsen,240,ammonium_acetate,parcel-1
-42.9,-1.5,0,30,22,7.9,2.1,18,,240,ammonium_acetate,parcel-1
+FERTILITY_CSV = """lat,lon,depthFrom,depthTo,clay,ph,organicMatter,phosphorusAvailable,phosphorusMethod,potassium_exchangeable,potassium_method,parcelId,samplingDate
+42.8,-1.6,0,30,22,7.9,2.1,18,olsen,240,ammonium_acetate,parcel-1,2026-09-30
+42.9,-1.5,0,30,22,7.9,2.1,18,,240,ammonium_acetate,parcel-1,2026-09-30
+42.9,-1.5,0,30,22,7.9,2.1,18,olsen,240,ammonium_acetate,parcel-1,30/09/2026
 """
 
 
@@ -140,9 +141,11 @@ def test_csv_batch_fertility_columns(client, mock_orion):
     assert resp.status_code == 200
     data = resp.json()
     assert data["created"] == 1
-    assert data["errors"] == 1
+    assert data["errors"] == 2
     assert data["errorDetails"][0]["row"] == 3
     assert "phosphorusMethod" in data["errorDetails"][0]["error"]
+    assert data["errorDetails"][1]["row"] == 4
+    assert "YYYY-MM-DD" in data["errorDetails"][1]["error"]
     entity = mock_orion.create_entities_batch.call_args.args[0][0]
     horizon = entity["horizons"]["value"][0]
     assert horizon["potassiumExchangeable"] == 240.0
