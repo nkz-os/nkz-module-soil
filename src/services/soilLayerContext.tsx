@@ -1,3 +1,4 @@
+import { API_ORIGIN } from './apiOrigin';
 import React, { useCallback, useSyncExternalStore } from 'react';
 import {
   getSoilLayerState,
@@ -43,7 +44,7 @@ export function SoilProvider({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * fetchSoilLayerContext — same-origin fetch to the soil module API (via api-gateway).
+ * fetchSoilLayerContext — fetch to the soil module API (via api-gateway).
  */
 export async function fetchSoilLayerContext(path: string): Promise<unknown> {
   const suffix = path.startsWith('/v1/soil')
@@ -51,7 +52,7 @@ export async function fetchSoilLayerContext(path: string): Promise<unknown> {
     : path.startsWith('/')
       ? path
       : `/${path}`;
-  const resp = await fetch(`/api/soil${suffix}`, {
+  const resp = await fetch(`${API_ORIGIN}/api/soil${suffix}`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   });

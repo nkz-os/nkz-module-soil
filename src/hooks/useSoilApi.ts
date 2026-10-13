@@ -1,3 +1,4 @@
+import { API_ORIGIN } from '../services/apiOrigin';
 import { useMemo } from 'react';
 import { useAPI } from '@nekazari/module-kit';
 import { parcelApiPath } from '../lib/normalizeParcelId';
@@ -42,7 +43,7 @@ export interface SoilSummary {
   relativeCompaction?: { type: string; value: SoilCompactionEntry[] };
 }
 
-const SOIL_API_BASE = '/api/soil';
+const SOIL_API_BASE = `${API_ORIGIN}/api/soil`;
 
 type ApiClient = { get: <T = unknown>(path: string) => Promise<T>; post: <T = unknown>(path: string, body?: unknown) => Promise<T> };
 
