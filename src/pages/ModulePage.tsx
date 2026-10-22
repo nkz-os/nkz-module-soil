@@ -1,0 +1,997 @@
+import React, { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { SlotShellCompact } from '@nekazari/viewer-kit';
+import { useSearchParams } from 'react-router-dom';
+import { useSoilApi, type SoilSummary, type SoilHorizon } from '../hooks/useSoilApi';
+import { useEntities } from '@nekazari/module-kit';
+import { ngsiValue, soilHorizons } from '../lib/ngsiValue';
+import { sanitizeHorizons, sanitizeCompaction, isSoilgridsNodata } from '../lib/sanitizeHorizon';
+import { SoilProfileCard } from '../components/SoilProfileCard';
+import { Select } from '@nekazari/ui-kit';
+import {
+  apiErrorDetail, buildSamplingPayload, fromSelect, labErrors, NONE, P_METHODS, K_METHODS,
+} from '../lib/samplingPayload';
+
+type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
+
+// ─── Types ───────────────────────────────────────────────────────────────
+// SoilHorizon is imported from useSoilApi.ts — horizons are the flat shape
+// returned by GET /parcel/{id}/summary (the backend unwraps NGSI-LD Property
+// wrappers for horizons only). dataSource / uncertainty / relativeCompaction
+// are STILL returned as `{ type, value }`-wrapped (see reading.py), so those
+// must go through ngsiValue() — see the selected-parcel detail block below.
+// AgriSoilEntity below is the *other* shape: the raw NGSI-LD entity as read
+// directly from Orion via useEntities() — attributes there are still
+// `{ type, value }`-wrapped and must go through ngsiValue().
+
+interface CompactionEntry {
+  depthFrom: number;
+  depthTo: number;
+  value: number;
+  classification: string;
+}
+
+interface AgriSoilEntity {
+  id: string;
+  type: string;
+  [key: string]: unknown;
+  refAgriParcel?: { type: string; object: string };
+  hasAgriParcel?: { type: string; object: string };
+  dataSource?: { type: string; value: string };
+  uncertainty?: { type: string; value: number };
+  horizons?: { type: string; value: SoilHorizon[] };
+  relativeCompaction?: { type: string; value: CompactionEntry[] };
+  location?: { type: string; value: Record<string, unknown> };
+}
+
+interface NgsiLdEntity {
+  id: string;
+  type: string;
+  [key: string]: unknown;
+}
+
+// ─── Texture Triangle SVG Component ──────────────────────────────────────
+
+// Texture class is computed by the backend (usdaTextureClass) and passed in.
+// Raw fractions may be suppressed (license) -> plot the point only when present,
+// but always show the derived class label.
+function TextureTriangle({ sand, silt, clay, textureClass }: {
+  sand?: number; silt?: number; clay?: number; textureClass?: string;
+}) {
+  const total = (sand || 0) + (silt || 0) + (clay || 0);
+  const hasFractions = total >= 1;
+  const si = hasFractions ? (silt || 0) / total : 0;
+  const c = hasFractions ? (clay || 0) / total : 0;
+  const x = 0.5 * si + c;
+  const y = (Math.sqrt(3) / 2) * si;
+
+  return (
+    <div className="flex flex-col items-center">
+      <svg viewBox="0 0 100 90" className="w-48 h-44">
+        <polygon
+          points="50,5 5,85 95,85"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1"
+          className="text-nkz-border"
+        />
+        <text x="50" y="3" textAnchor="middle" className="fill-nkz-muted" fontSize="5">Arena</text>
+        <text x="0" y="90" textAnchor="start" className="fill-nkz-muted" fontSize="5">Arcilla</text>
+        <text x="100" y="90" textAnchor="end" className="fill-nkz-muted" fontSize="5">Limo</text>
+        {hasFractions && (
+          <circle cx={x * 90 + 5} cy={y * 80 + 5} r="3" className="fill-nkz-accent-base" />
+        )}
+      </svg>
+      <span className="text-nkz-xs text-nkz-muted mt-1">{textureClass || '—'}</span>
+    </div>
+  );
+}
+
+// ─── Refresh / compute soil for a parcel ─────────────────────────────────
+
+function RefreshSoilButton({ parcelId }: { parcelId: string }) {
+  const { t } = useTranslation('soil');
+  const api = useSoilApi();
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
+
+  const onClick = async () => {
+    if (!parcelId) return;
+    setState('busy');
+    try {
+      await api.forceIngest(parcelId);
+      setState('done');
+    } catch {
+      setState('error');
+    }
+  };
+
+  const label =
+    state === 'busy' ? t('refresh.busy', 'Calculando…')
+    : state === 'done' ? t('refresh.done', 'Encolado ✓')
+    : state === 'error' ? t('refresh.error', 'Error')
+    : t('refresh.action', 'Calcular suelo');
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={state === 'busy' || !parcelId}
+      className="px-3 py-1.5 text-nkz-xs rounded-nkz-sm border border-nkz-border hover:border-nkz-accent-base disabled:opacity-50"
+    >
+      {label}
+    </button>
+  );
+}
+
+// ─── Module Page ─────────────────────────────────────────────────────────
+
+export default function ModulePage() {
+  const { t } = useTranslation('soil');
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('parcel')) {
+      setActiveTab('dashboard');
+    }
+  }, [searchParams]);
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'dashboard', label: t('tabs.dashboard') },
+    { id: 'manual', label: t('tabs.manual') },
+    { id: 'csv', label: t('tabs.csv') },
+    { id: 'history', label: t('tabs.history') },
+  ];
+
+  return (
+    <SlotShellCompact moduleId="soil">
+      <div className="max-w-5xl mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-nkz-xl font-medium">{t('title')}</h1>
+        </div>
+        <div className="flex gap-2 border-b border-nkz-border">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 text-nkz-sm border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'border-nkz-accent-base text-nkz-accent-base'
+                  : 'border-transparent text-nkz-muted hover:text-nkz-text-primary'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'dashboard' && <DashboardTab />}
+        {activeTab === 'manual' && <ManualSamplingTab />}
+        {activeTab === 'csv' && <CsvUploadTab />}
+        {activeTab === 'history' && <HistoryTab />}
+      </div>
+    </SlotShellCompact>
+  );
+}
+
+function getParcelId(soil: AgriSoilEntity): string {
+  const ref = soil.hasAgriParcel?.object || soil.refAgriParcel?.object;
+  return ref?.split(':').pop() || soil.id;
+}
+
+// ─── Dashboard Tab ───────────────────────────────────────────────────────
+
+function DashboardTab() {
+  const { t } = useTranslation('soil');
+  const api = useSoilApi();
+  const { data: soils, isLoading: soilsLoading } = useEntities<AgriSoilEntity>('AgriSoilExtended');
+  const { data: parcels, isLoading: parcelsLoading } = useEntities<NgsiLdEntity>('AgriParcel');
+  const [selectedParcel, setSelectedParcel] = useState<string | null>(null);
+  const [summary, setSummary] = useState<SoilSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Build map: AgriParcel short id → soil entity (if any)
+  const soilByParcel = React.useMemo(() => {
+    const map = new Map<string, AgriSoilEntity>();
+    if (!soils) return map;
+    for (const s of soils) {
+      const pid = getParcelId(s);
+      if (pid) map.set(pid, s);
+    }
+    return map;
+  }, [soils]);
+
+  // Combined parcel list: all AgriParcel + any AgriSoilExtended that references a non-Orion parcel
+  const allParcels = React.useMemo(() => {
+    const seen = new Set<string>();
+    const combined: Array<{ parcelId: string; parcelName: string | null; soilEntity: AgriSoilEntity | null }> = [];
+
+    // First, add parcels from AgriParcel
+    if (parcels) {
+      for (const p of parcels) {
+        const pid = (p.id as string)?.split(':')?.pop() || '';
+        if (pid) {
+          seen.add(pid);
+          combined.push({
+            parcelId: pid,
+            parcelName: ngsiValue<string>((p as NgsiLdEntity).name) ?? null,
+            soilEntity: soilByParcel.get(pid) || null,
+          });
+        }
+      }
+    }
+
+    // Then, add standalone AgriSoilExtended (e.g. from point texture ingest) that dont link to an AgriParcel
+    if (soils) {
+      for (const s of soils) {
+        const pid = getParcelId(s);
+        if (pid && !seen.has(pid)) {
+          seen.add(pid);
+          combined.push({ parcelId: pid, parcelName: null, soilEntity: s });
+        }
+      }
+    }
+
+    return combined;
+  }, [parcels, soils, soilByParcel]);
+
+  useEffect(() => {
+    const parcelQuery = searchParams.get('parcel');
+    if (parcelQuery && parcelQuery !== selectedParcel) {
+      setSelectedParcel(parcelQuery);
+    }
+  }, [searchParams, selectedParcel]);
+
+  const handleSelectParcel = (id: string) => {
+    setSelectedParcel(id);
+    setSummary(null);
+    setSummaryError(false);
+    setSearchParams(prev => { prev.set('parcel', id); return prev; }, { replace: true });
+  };
+
+  // Always fetch sanitized summary from API (Orion cache may carry nodata sentinels).
+  useEffect(() => {
+    if (!selectedParcel) return;
+    setSummaryLoading(true);
+    setSummaryError(false);
+    api.getSummary(selectedParcel)
+      .then((data) => {
+        setSummary(data);
+        setSummaryError(false);
+      })
+      .catch(() => {
+        setSummary(null);
+        setSummaryError(true);
+      })
+      .finally(() => setSummaryLoading(false));
+  }, [selectedParcel, api]);
+
+  const filteredParcels = React.useMemo(() => {
+    if (!searchTerm) return allParcels;
+    const lower = searchTerm.toLowerCase();
+    return allParcels.filter(p => {
+      return p.parcelId.toLowerCase().includes(lower) ||
+             (p.parcelName && p.parcelName.toLowerCase().includes(lower));
+    });
+  }, [allParcels, searchTerm]);
+
+  if (soilsLoading || parcelsLoading) {
+    return (
+      <div className="bg-nkz-surface rounded-nkz-md p-6">
+        <p className="text-nkz-muted text-nkz-sm">{t('loading')}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Parcel selector */}
+      <div className="bg-nkz-surface rounded-nkz-md p-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
+          <h2 className="text-nkz-lg font-medium">{t('dashboard.parcels')}</h2>
+          <input
+            type="search"
+            placeholder={t('search', 'Search parcels...')}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="px-3 py-1.5 text-nkz-sm rounded-nkz-sm border border-nkz-border bg-transparent min-w-[200px]"
+          />
+        </div>
+        {filteredParcels.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto pr-2">
+            {filteredParcels.map((p) => {
+              const soil = p.soilEntity;
+              const dataSource = ngsiValue<string>(soil?.dataSource);
+              const uncertainty = ngsiValue<number>(soil?.uncertainty);
+              const horizonList = soilHorizons(soil as Record<string, unknown> | null);
+              const topH = sanitizeHorizons(horizonList as Record<string, unknown>[])[0] || {};
+              const topPh = ngsiValue<number>(topH.ph);
+              const topKsat = ngsiValue<number>(topH.ksatSaturated);
+              const hasSoil = !!soil;
+
+              return (
+                <button
+                  key={p.parcelId}
+                  onClick={() => handleSelectParcel(p.parcelId)}
+                  className={`text-left p-4 rounded-nkz-md border transition-colors ${
+                    selectedParcel === p.parcelId
+                      ? 'border-nkz-accent-base bg-nkz-accent-base/5'
+                      : 'border-nkz-border hover:border-nkz-accent-base/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${hasSoil ? 'bg-nkz-success' : 'bg-nkz-muted'}`} />
+                    <div className="text-nkz-sm font-medium truncate">{p.parcelName || p.parcelId}</div>
+                  </div>
+                  {hasSoil ? (
+                    <>
+                      <div className="text-nkz-xs text-nkz-muted mt-1 ml-4">
+                        {dataSource || '—'}
+                        {uncertainty != null && (
+                          <span className="ml-2">σ={uncertainty.toFixed(2)}</span>
+                        )}
+                      </div>
+                      {(ngsiValue<string>(topH.hydrologicGroup) || (topPh != null && !isSoilgridsNodata(topPh)) || topKsat != null) && (
+                        <div className="flex gap-3 mt-1 ml-4 text-nkz-xs">
+                          {ngsiValue<string>(topH.hydrologicGroup) && (
+                            <span className="text-nkz-muted">
+                              {t('hydrologicGroup')}: <span className="font-medium">{ngsiValue<string>(topH.hydrologicGroup)}</span>
+                            </span>
+                          )}
+                          {topPh != null && !isSoilgridsNodata(topPh) && (
+                            <span className="text-nkz-muted">
+                              {t('fields.ph')}: <span className="font-medium">{String(topPh)}</span>
+                            </span>
+                          )}
+                          {topKsat != null && (
+                            <span className="text-nkz-muted">
+                              Ksat: <span className="font-medium">{String(topKsat)} mm/h</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-nkz-xs text-nkz-muted mt-1 ml-4">{t('dashboard.noSoilData')}</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <div className="text-4xl mb-3 opacity-30">🧑‍🌾</div>
+            <p className="text-nkz-muted text-nkz-sm">{t('dashboard.noSoilData')}</p>
+            <p className="text-nkz-xs text-nkz-muted mt-2">{t('dashboard.noSoilHint')}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Selected parcel detail */}
+      {summaryLoading && (
+        <div className="bg-nkz-surface rounded-nkz-md p-6 text-center py-8">
+          <p className="text-nkz-muted text-nkz-sm">{t('loading')}</p>
+        </div>
+      )}
+      {summaryError && !summary && !summaryLoading && selectedParcel && (
+        <div className="bg-nkz-surface rounded-nkz-md p-6">
+          <div className="text-center py-8">
+            <p className="text-nkz-danger text-nkz-sm">{t('dashboard.noSoilData')}</p>
+            <p className="text-nkz-xs text-nkz-muted mt-1">{t('dashboard.noSoilHint')}</p>
+            <RefreshSoilButton parcelId={selectedParcel} />
+          </div>
+        </div>
+      )}
+      {summary && !summaryLoading && selectedParcel && (() => {
+        // summary comes from GET /parcel/{id}/summary — already the flat
+        // SoilSummary shape (see useSoilApi.ts), so horizons/compaction are
+        // plain arrays already, no ngsiValue() unwrapping needed. It carries
+        // no id/hasAgriParcel (unlike AgriSoilEntity), so the parcel id is
+        // the one already selected, not derived from the summary payload.
+        const detailHorizons = sanitizeHorizons(summary.horizons);
+        const compaction = sanitizeCompaction(
+          ngsiValue<CompactionEntry[]>(summary.relativeCompaction) ?? [],
+        );
+        const parcelId = selectedParcel;
+        return (
+        <div className="bg-nkz-surface rounded-nkz-md p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-nkz-lg font-medium">{t('dashboard.detail')}</h2>
+            <RefreshSoilButton parcelId={selectedParcel} />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Texture triangle */}
+            {detailHorizons[0] && (
+              <div className="flex flex-col items-center">
+                <h3 className="text-nkz-sm font-medium mb-2">{t('dashboard.texture')}</h3>
+                <TextureTriangle
+                  sand={detailHorizons[0].sand}
+                  silt={detailHorizons[0].silt}
+                  clay={detailHorizons[0].clay}
+                  textureClass={detailHorizons[0].usdaTextureClass}
+                />
+              </div>
+            )}
+
+            {/* Soil profile (vertical, readable) */}
+            {detailHorizons.length > 0 && (
+              <div className="col-span-full">
+                <SoilProfileCard entityId={parcelId} maxDepth={100} />
+              </div>
+            )}
+
+            {/* Pedotransfer results */}
+            <div className="space-y-2">
+              <h3 className="text-nkz-sm font-medium mb-2">{t('dashboard.properties')}</h3>
+              {detailHorizons.map((h: SoilHorizon) => (
+                <div key={`${h.depthFrom}-${h.depthTo}`} className="text-nkz-xs space-y-1 border-b border-nkz-border/50 pb-2">
+                  <div className="font-medium text-nkz-muted">{h.depthFrom}–{h.depthTo} cm</div>
+                  {h.usdaTextureClass && (
+                    <div className="flex justify-between">
+                      <span>{t('textureClass', 'Texture class')}</span>
+                      <span className="font-medium">{h.usdaTextureClass}</span>
+                    </div>
+                  )}
+                  {h.hydrologicGroup && (
+                    <div className="flex justify-between">
+                      <span>{t('hydrologicGroup')}</span>
+                      <span className="font-medium">{h.hydrologicGroup}</span>
+                    </div>
+                  )}
+                  {h.ksatSaturated != null && (
+                    <div className="flex justify-between">
+                      <span>{t('ksat')}</span>
+                      <span className="font-medium">{h.ksatSaturated} mm/h</span>
+                    </div>
+                  )}
+                  {h.ph != null && (
+                    <div className="flex justify-between">
+                      <span>{t('fields.ph')}</span>
+                      <span className="font-medium">{h.ph}</span>
+                    </div>
+                  )}
+                  {h.availableWaterCapacity != null && (
+                    <div className="flex justify-between">
+                      <span>{t('awc')}</span>
+                      <span className="font-medium">{(h.availableWaterCapacity * 100).toFixed(1)}%</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Compaction */}
+          {compaction.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-nkz-border">
+              <h3 className="text-nkz-sm font-medium mb-2">{t('compaction')}</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {compaction.map((rc: CompactionEntry) => (
+                  <div key={`${rc.depthFrom}-${rc.depthTo}`} className="text-nkz-xs text-center p-2 rounded-nkz-sm bg-nkz-muted/10">
+                    <div className="font-medium">{rc.depthFrom}–{rc.depthTo} cm</div>
+                    <div className={`${compactionColor(rc.classification)}`}>
+                      {rc.classification} ({rc.value}%)
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Attribution */}
+          <div className="mt-4 pt-4 border-t border-nkz-border text-nkz-xs text-nkz-muted">
+            {t('source')}: {ngsiValue<string>(summary.dataSource) || '—'}
+            {ngsiValue<number>(summary.uncertainty) != null && (
+              <span className="ml-4">
+                {t('uncertainty')}: {String(ngsiValue<number>(summary.uncertainty))}
+              </span>
+            )}
+          </div>
+        </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+function compactionColor(classification: string): string {
+  switch (classification) {
+    case 'normal': return 'text-nkz-success';
+    case 'slight': return 'text-nkz-warning';
+    case 'moderate': return 'text-orange-500';
+    case 'severe': return 'text-nkz-danger';
+    default: return 'text-nkz-muted';
+  }
+}
+
+// ─── Manual Sampling Tab ─────────────────────────────────────────────────
+
+function ManualSamplingTab() {
+  const { t } = useTranslation('soil');
+  const api = useSoilApi();
+  const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const { data: parcels } = useEntities<NgsiLdEntity>('AgriParcel');
+  const noneOption = { value: NONE, label: t('fields.none') };
+  const parcelOptions = (parcels || []).map((p) => ({
+    value: p.id as string,
+    label: ngsiValue<string>((p as NgsiLdEntity).name) ?? (p.id as string),
+  }));
+  const pMethodOptions = [noneOption,
+    ...P_METHODS.map((m) => ({ value: m, label: t(`methods.p.${m}`) }))];
+  const kMethodOptions = [noneOption,
+    ...K_METHODS.map((m) => ({ value: m, label: t(`methods.k.${m}`) }))];
+
+  const fields = [
+    { key: 'lat', label: t('fields.lat'), type: 'number', required: true },
+    { key: 'lon', label: t('fields.lon'), type: 'number', required: true },
+    { key: 'depthFrom', label: t('fields.depthFrom'), type: 'number', required: true },
+    { key: 'depthTo', label: t('fields.depthTo'), type: 'number', required: true },
+    { key: 'sand', label: t('fields.sand'), type: 'number' },
+    { key: 'silt', label: t('fields.silt'), type: 'number' },
+    { key: 'clay', label: t('fields.clay'), type: 'number' },
+    { key: 'organicCarbon', label: t('fields.organicCarbon'), type: 'number' },
+    { key: 'organicMatter', label: t('fields.organicMatter'), type: 'number' },
+    { key: 'ph', label: t('fields.ph'), type: 'number' },
+    { key: 'bulkDensity', label: t('fields.bulkDensity'), type: 'number' },
+    { key: 'totalNitrogen', label: t('fields.totalNitrogen'), type: 'number' },
+    { key: 'nitrateN', label: t('fields.nitrateN'), type: 'number' },
+    { key: 'ammoniumN', label: t('fields.ammoniumN'), type: 'number' },
+    { key: 'phosphorusAvailable', label: t('fields.phosphorusAvailable'), type: 'number' },
+    { key: 'potassiumExchangeable', label: t('fields.potassiumExchangeable'), type: 'number' },
+    { key: 'carbonates', label: t('fields.carbonates'), type: 'number' },
+    { key: 'activeLime', label: t('fields.activeLime'), type: 'number' },
+    { key: 'penetrationResistance', label: t('fields.penetrationResistance'), type: 'number' },
+    { key: 'labReference', label: t('fields.labReference'), type: 'text' },
+    { key: 'samplingDate', label: t('fields.samplingDate'), type: 'date' },
+    { key: 'operator', label: t('fields.operator'), type: 'text' },
+  ];
+  const selectKeys = ['parcelId', 'phosphorusMethod', 'potassiumMethod'];
+
+  const [form, setForm] = useState<Record<string, string>>(
+    Object.fromEntries([...fields.map((f) => f.key), ...selectKeys].map((k) => [k, '']))
+  );
+
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+
+  const validate = useCallback((): string[] => {
+    const errors: Record<string, string> = {};
+
+    const lat = parseFloat(form.lat);
+    const lon = parseFloat(form.lon);
+    if (isNaN(lat) || lat < -90 || lat > 90) errors.lat = t('validation.lat');
+    if (isNaN(lon) || lon < -180 || lon > 180) errors.lon = t('validation.lon');
+
+    const depthFrom = parseInt(form.depthFrom);
+    const depthTo = parseInt(form.depthTo);
+    if (isNaN(depthFrom) || depthFrom < 0) errors.depthFrom = t('validation.depthFrom');
+    if (isNaN(depthTo) || depthTo <= depthFrom) errors.depthTo = t('validation.depthTo');
+
+    const sand = form.sand ? parseFloat(form.sand) : null;
+    const silt = form.silt ? parseFloat(form.silt) : null;
+    const clay = form.clay ? parseFloat(form.clay) : null;
+    if (sand !== null && silt !== null && clay !== null) {
+      const total = sand + silt + clay;
+      if (total < 97 || total > 103) {
+        errors.sand = t('validation.textureSum');
+      }
+    }
+
+    const ph = form.ph ? parseFloat(form.ph) : null;
+    if (ph !== null && (ph < 0 || ph > 14)) errors.ph = t('validation.ph');
+
+    const bd = form.bulkDensity ? parseFloat(form.bulkDensity) : null;
+    if (bd !== null && (bd < 0.1 || bd > 2.65)) errors.bulkDensity = t('validation.bulkDensity');
+
+    for (const [key, code] of Object.entries(labErrors(form))) {
+      errors[key] = t(`validation.${code}`);
+    }
+    setValidationErrors(errors);
+    return Object.values(errors);
+  }, [form, t]);
+
+  const handleChange = (field: string, value: string) => {
+    setForm((prev: Record<string, string>) => ({ ...prev, [field]: value }));
+    // Clear error on change
+    if (validationErrors[field]) {
+      setValidationErrors((prev: Record<string, string>) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+  };
+
+  const handleSubmit = async () => {
+    const errors = validate();
+    if (errors.length > 0) return;
+
+    try {
+      await api.uploadSamplingPoint(buildSamplingPayload(form));
+      setResult({ type: 'success', message: t('success') });
+      setForm(Object.fromEntries([...fields.map((f) => f.key), ...selectKeys].map((k) => [k, ''])));
+    } catch (err) {
+      const detail = apiErrorDetail(err);
+      setResult({ type: 'error', message: detail ? `${t('error')} ${detail}` : t('error') });
+    }
+  };
+
+  return (
+    <div className="bg-nkz-surface rounded-nkz-md p-6">
+      <h2 className="text-nkz-lg font-medium mb-4">{t('tabs.manual')}</h2>
+
+      {/* Result banner */}
+      {result && (
+        <div
+          className={`mb-4 p-3 rounded-nkz-sm text-nkz-sm ${
+            result.type === 'success'
+              ? 'bg-nkz-success/10 text-nkz-success border border-nkz-success/30'
+              : 'bg-nkz-danger/10 text-nkz-danger border border-nkz-danger/30'
+          }`}
+        >
+          {result.message}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        {fields.map((field) => (
+          <div key={field.key}>
+            <label className="block text-nkz-xs mb-1">
+              {field.label}
+              {field.required && <span className="text-nkz-danger ml-1">*</span>}
+            </label>
+            <input
+              type={field.type}
+              value={form[field.key]}
+              onChange={(e) => handleChange(field.key, e.target.value)}
+              className={`w-full border rounded-nkz-sm px-2 py-1 text-nkz-sm ${
+                validationErrors[field.key]
+                  ? 'border-nkz-danger bg-nkz-danger/5'
+                  : 'border-nkz-border'
+              }`}
+            />
+            {validationErrors[field.key] && (
+              <p className="text-nkz-xs text-nkz-danger mt-1">{validationErrors[field.key]}</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mt-4">
+        {([
+          ['parcelId', t('fields.parcel'), [noneOption, ...parcelOptions]],
+          ['phosphorusMethod', t('fields.phosphorusMethod'), pMethodOptions],
+          ['potassiumMethod', t('fields.potassiumMethod'), kMethodOptions],
+        ] as const).map(([key, label, options]) => (
+          <div key={key}>
+            <label className="block text-nkz-xs mb-1">{label}</label>
+            <Select
+              value={form[key]}
+              onValueChange={(v) => handleChange(key, fromSelect(v))}
+              options={[...options]}
+              placeholder={t('fields.choose')}
+              error={Boolean(validationErrors[key])}
+            />
+            {validationErrors[key] && (
+              <p className="text-nkz-xs text-nkz-danger mt-1">{validationErrors[key]}</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={handleSubmit}
+        className="mt-4 px-4 py-2 bg-nkz-accent-base text-white rounded-nkz-sm text-nkz-sm hover:bg-nkz-accent-base/90 transition-colors"
+      >
+        {t('submit')}
+      </button>
+    </div>
+  );
+}
+
+// ─── CSV Upload Tab ──────────────────────────────────────────────────────
+
+function CsvUploadTab() {
+  const { t } = useTranslation('soil');
+  const api = useSoilApi();
+  const [result, setResult] = useState<{ type: 'success' | 'error'; message: string; details?: unknown } | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      setFileName(file.name);
+      setUploading(true);
+      setResult(null);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await api.uploadCsv(formData);
+        const data = response as { created: number; errors: number; errorDetails?: unknown[] };
+        if (data.errors > 0) {
+          setResult({
+            type: 'success',
+            message: t('csv.partialSuccess', { created: data.created, errors: data.errors }),
+            details: data.errorDetails,
+          });
+        } else {
+          setResult({ type: 'success', message: t('csv.fullSuccess', { created: data.created }) });
+        }
+      } catch {
+        setResult({ type: 'error', message: t('error') });
+      } finally {
+        setUploading(false);
+      }
+    },
+    [api, t]
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    },
+    [handleFile]
+  );
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) handleFile(file);
+    },
+    [handleFile]
+  );
+
+  return (
+    <div className="bg-nkz-surface rounded-nkz-md p-6">
+      <h2 className="text-nkz-lg font-medium mb-4">{t('tabs.csv')}</h2>
+
+      {/* Result banner */}
+      {result && (
+        <div
+          className={`mb-4 p-3 rounded-nkz-sm text-nkz-sm ${
+            result.type === 'success'
+              ? 'bg-nkz-success/10 text-nkz-success border border-nkz-success/30'
+              : 'bg-nkz-danger/10 text-nkz-danger border border-nkz-danger/30'
+          }`}
+        >
+          {result.message}
+          {result.details != null && (
+            <details className="mt-2 text-nkz-xs">
+              <summary className="cursor-pointer">{t('csv.errorDetails')}</summary>
+              <pre className="mt-1 text-nkz-muted whitespace-pre-wrap">
+                {JSON.stringify(result.details, null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+
+      <div
+        className={`border-2 border-dashed rounded-nkz-md p-8 text-center transition-colors ${
+          uploading ? 'border-nkz-accent-base/50 bg-nkz-accent-base/5' : 'border-nkz-border'
+        }`}
+        onDrop={handleDrop}
+        onDragOver={(e) => e.preventDefault()}
+      >
+        {uploading ? (
+          <p className="text-nkz-muted">{t('csv.uploading')}</p>
+        ) : (
+          <label className="cursor-pointer">
+            <span className="text-nkz-muted">{t('csvDropzone')}</span>
+            <input
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={handleChange}
+            />
+          </label>
+        )}
+        {fileName && !uploading && (
+          <p className="text-nkz-xs text-nkz-muted mt-2">{fileName}</p>
+        )}
+        <p className="text-nkz-xs text-nkz-muted mt-2">{t('csvFormat')}</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── History Tab ─────────────────────────────────────────────────────────
+
+function HistoryTab() {
+  const { t } = useTranslation('soil');
+  const { data: surveys, isLoading: surveysLoading } = useEntities<NgsiLdEntity>('SoilSurvey');
+  const { data: samplingPoints, isLoading: pointsLoading } = useEntities<NgsiLdEntity>('SoilSamplingPoint');
+  const [expandedSurvey, setExpandedSurvey] = useState<string | null>(null);
+  const [sortDesc, setSortDesc] = useState(true);
+
+  const loading = surveysLoading || pointsLoading;
+
+  if (loading) {
+    return (
+      <div className="bg-nkz-surface rounded-nkz-md p-6">
+        <p className="text-nkz-muted text-nkz-sm">{t('loading')}</p>
+      </div>
+    );
+  }
+
+  const surveyList = surveys || [];
+  const pointsList = samplingPoints || [];
+
+  const sortedSurveys = [...surveyList].sort((a, b) => {
+    const dateA = (a as any).startDate?.value || '';
+    const dateB = (b as any).startDate?.value || '';
+    return sortDesc ? dateB.localeCompare(dateA) : dateA.localeCompare(dateB);
+  });
+
+  const sortedPoints = [...pointsList].sort((a, b) => {
+    const dateA = (a as any).samplingDate?.value || '';
+    const dateB = (b as any).samplingDate?.value || '';
+    return sortDesc ? dateB.localeCompare(dateA) : dateA.localeCompare(dateB);
+  });
+
+  if (surveyList.length === 0 && pointsList.length === 0) {
+    return (
+      <div className="bg-nkz-surface rounded-nkz-md p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-nkz-lg font-medium">{t('tabs.history')}</h2>
+          <button onClick={() => setSortDesc(d => !d)}
+                  className="text-nkz-xs text-nkz-muted hover:text-nkz-accent-base">
+            {sortDesc ? '↓ newest' : '↑ oldest'}
+          </button>
+        </div>
+        <div className="text-center py-8">
+          <p className="text-nkz-muted text-nkz-sm">{t('history.noData')}</p>
+          <p className="text-nkz-xs text-nkz-muted mt-2">{t('history.noDataHint')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Surveys */}
+      {surveyList.length > 0 && (
+        <div className="bg-nkz-surface rounded-nkz-md p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-nkz-lg font-medium">{t('history.surveys')}</h2>
+            <button onClick={() => setSortDesc(d => !d)}
+                    className="text-nkz-xs text-nkz-muted hover:text-nkz-accent-base">
+              {sortDesc ? '↓ newest' : '↑ oldest'}
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-nkz-sm">
+              <thead>
+                <tr className="text-nkz-muted border-b border-nkz-border">
+                  <th className="text-left py-2 pr-4">{t('history.type')}</th>
+                  <th className="text-left py-2 pr-4">{t('history.date')}</th>
+                  <th className="text-left py-2 pr-4">{t('history.points')}</th>
+                  <th className="text-left py-2">{t('history.instrumentation')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedSurveys.map((survey) => {
+                  const s = survey as Record<string, Record<string, unknown> | undefined>;
+                  const surveyType = s.surveyType;
+                  const startDate = s.startDate;
+                  const pointCount = s.pointCount;
+                  const instrumentation = s.instrumentation;
+                  const isExpanded = expandedSurvey === survey.id;
+
+                  // Find points for this survey
+                  const surveyPoints = pointsList.filter((p) => {
+                    const ps = p as Record<string, Record<string, unknown> | undefined>;
+                    const refSurvey = ps.refSoilSurvey;
+                    return refSurvey?.object === survey.id;
+                  });
+
+                  return (
+                    <React.Fragment key={survey.id}>
+                      <tr
+                        className="border-b border-nkz-border/50 cursor-pointer hover:bg-nkz-muted/5"
+                        onClick={() => setExpandedSurvey(isExpanded ? null : survey.id)}
+                      >
+                        <td className="py-2 pr-4">
+                          <span className={`px-2 py-0.5 rounded-nkz-sm text-nkz-xs ${
+                            surveyType?.value === 'lab' ? 'bg-nkz-accent-base/10 text-nkz-accent-base' :
+                            surveyType?.value === 'em' ? 'bg-nkz-warning/10 text-nkz-warning' :
+                            surveyType?.value === 'nir' ? 'bg-purple-100 text-purple-700' :
+                            'bg-nkz-muted/10 text-nkz-muted'
+                          }`}>
+                            {String(surveyType?.value || '—')}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4 text-nkz-muted">
+                          {typeof startDate?.value === 'string' ? startDate.value.substring(0, 10) : '—'}
+                        </td>
+                        <td className="py-2 pr-4">{Number(pointCount?.value) || surveyPoints.length || 0}</td>
+                        <td className="py-2 text-nkz-muted">{typeof instrumentation?.value === 'string' ? instrumentation.value : '—'}</td>
+                      </tr>
+                      {isExpanded && surveyPoints.length > 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-2 px-4 bg-nkz-muted/5">
+                            <div className="text-nkz-xs space-y-1">
+                              {surveyPoints.map((p) => {
+                                const ps = p as Record<string, Record<string, unknown> | undefined>;
+                                const loc = ps.location;
+                                const coords = (loc?.value as Record<string, unknown>)?.coordinates as number[] | undefined;
+                                const samplingDate = ps.samplingDate;
+                                const hList = soilHorizons(p as Record<string, unknown>) as Array<Record<string, unknown>>;
+                                const topH = hList[0] || {};
+
+                                return (
+                                  <div key={p.id} className="flex gap-4 text-nkz-muted">
+                                    <span>{coords ? `${coords[1].toFixed(4)}, ${coords[0].toFixed(4)}` : '—'}</span>
+                                    <span>{String(samplingDate?.value || '').substring(0, 10) || '—'}</span>
+                                    <span>
+                                      {topH.sand != null && `S:${topH.sand}% Si:${topH.silt}% C:${topH.clay}%`}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Orphan sampling points (not linked to a survey) */}
+      {pointsList.length > 0 && (
+        <div className="bg-nkz-surface rounded-nkz-md p-6">
+          <h2 className="text-nkz-lg font-medium mb-4">{t('history.points')}</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-nkz-sm">
+              <thead>
+                <tr className="text-nkz-muted border-b border-nkz-border">
+                  <th className="text-left py-2 pr-4">{t('history.coordinates')}</th>
+                  <th className="text-left py-2 pr-4">{t('history.date')}</th>
+                  <th className="text-left py-2 pr-4">{t('history.depth')}</th>
+                  <th className="text-left py-2">{t('history.texture')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedPoints.map((p) => {
+                  const ps = p as Record<string, Record<string, unknown> | undefined>;
+                  const loc = ps.location;
+                  const coords = (loc?.value as Record<string, unknown>)?.coordinates as number[] | undefined;
+                  const samplingDate = ps.samplingDate;
+                  const hList = soilHorizons(p as Record<string, unknown>) as Array<Record<string, unknown>>;
+
+                  return (
+                    <tr key={p.id} className="border-b border-nkz-border/50">
+                      <td className="py-2 pr-4">
+                        {coords ? `${coords[1].toFixed(4)}, ${coords[0].toFixed(4)}` : '—'}
+                      </td>
+                      <td className="py-2 pr-4 text-nkz-muted">
+                        {typeof samplingDate?.value === 'string' ? samplingDate.value.substring(0, 10) : '—'}
+                      </td>
+                      <td className="py-2 pr-4 text-nkz-muted">
+                        {hList.length > 0 ? `${hList[0].depthFrom}–${hList[0].depthTo} cm` : '—'}
+                      </td>
+                      <td className="py-2 text-nkz-muted">
+                        {hList[0]?.sand != null
+                          ? `${hList[0].sand}/${hList[0].silt}/${hList[0].clay}%`
+                          : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

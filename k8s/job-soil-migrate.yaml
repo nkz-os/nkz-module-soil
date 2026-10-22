@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: soil-migrate
+  namespace: nekazari
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: migrate
+        image: ghcr.io/nkz-os/nkz-module-soil/migrate:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: SOIL_PG_DSN
+          valueFrom:
+            secretKeyRef:
+              name: soil-module-secret
+              key: pg-dsn
+        - name: MINIO_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: soil-module-config
+              key: minio-endpoint
+        - name: MINIO_RAW_BUCKET
+          value: nekazari-soil-raw
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: soil-module-secret
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: soil-module-secret
+              key: MINIO_SECRET_KEY
+        - name: ORION_BASE_URL
+          value: http://orion-ld-service:1026
+        - name: CONTEXT_URL
+          value: http://api-gateway-service:5000/ngsi-ld-context.json
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: password
+        - name: REDIS_URL
+          value: redis://:$(REDIS_PASSWORD)@redis-service:6379/0
+        resources:
+          requests:
+            memory: 512Mi
+            cpu: 250m
+          limits:
+            memory: 2Gi
+            cpu: 1000m

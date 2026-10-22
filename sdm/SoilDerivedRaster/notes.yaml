@@ -1,0 +1,14 @@
+purpose: |
+  Reference entity for a geospatial raster artifact stored in object storage,
+  with COG/GeoTIFF metadata (CRS, resolution, bbox via parcel ref).
+upstream_alignment:
+  base: none (new entity)
+  rationale: |
+    No SDM entity represents externally-stored raster artifacts. Used in Phase 1 for
+    soil-derived rasters; to be generalized to GeoRaster in Phase 3 covering NDVI,
+    VRA prescription, interpolated moisture, etc.
+units:
+  reference: UN/CEFACT
+  examples:
+    depthFrom: CMT (centimetre)
+    resolution: MTR (metre)

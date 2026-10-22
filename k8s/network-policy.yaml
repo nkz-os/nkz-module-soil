@@ -1,0 +1,89 @@
+---
+# Egress to external soil data providers (SoilGrids, WMS, etc.).
+# Complements namespace allow-same-namespace; required for worker ingest and
+# on-the-fly provider fetches in the API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: soil-module-external-apis
+  namespace: nekazari
+  labels:
+    app.kubernetes.io/part-of: soil-module
+    policy-type: data-ingestion
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - soil-module-api
+          - soil-module-worker
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Documents expected ingress to soil API (webhook from Orion, user traffic via gateway).
+# Union with cluster-wide policies; does not block other same-namespace callers.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: soil-module-api-ingress
+  namespace: nekazari
+  labels:
+    app.kubernetes.io/part-of: soil-module
+    policy-type: ingress-hardening
+spec:
+  podSelector:
+    matchLabels:
+      app: soil-module-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 8000
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8000
+    - from:
+        - podSelector:
+            matchLabels:
+              app: orion-ld
+      ports:
+        - protocol: TCP
+          port: 8000

@@ -1,0 +1,31 @@
+{
+  "id": "urn:ngsi-ld:AgriSoilExtended:parcel-123",
+  "type": "AgriSoilExtended",
+  "location": {
+    "type": "GeoProperty",
+    "value": {"type": "Polygon", "coordinates": [[[-1.65, 42.81],[-1.64, 42.81],[-1.64, 42.82],[-1.65, 42.82],[-1.65, 42.81]]]}
+  },
+  "refAgriParcel": {"type": "Relationship", "object": "urn:ngsi-ld:AgriParcel:parcel-123"},
+  "parcelVersionId": {"type": "Property", "value": "v1"},
+  "horizons": {
+    "type": "Property",
+    "value": [
+      {
+        "depthFrom": 0, "depthTo": 30,
+        "clayContent": 25, "sandContent": 42, "siltContent": 33,
+        "organicCarbon": 1.8, "bulkDensity": 1.35,
+        "availableWaterCapacity": 0.14
+      }
+    ],
+    "providedBy": {"type": "Property", "value": "LUCAS-2018"},
+    "license": {"type": "Property", "value": "JRC-LUCAS-2018"},
+    "observedAt": "2018-05-12T00:00:00Z",
+    "confidenceInterval": {"type": "Property", "value": [0.11, 0.17]}
+  },
+  "hydrologicGroup": {
+    "type": "Property",
+    "value": "B",
+    "derivedBy": {"type": "Property", "value": {"function": "scs_hydrologic_group", "from": ["saturatedHydraulicConductivity"]}}
+  },
+  "@context": ["https://nkz-os.org/jsonld-contexts/v1/nkz-context.jsonld"]
+}

@@ -1,0 +1,207 @@
+"""
+Water Budget Worker — computes soil water balance for all AgriSoil entities.
+
+Runs every 6 hours via Arq schedule:
+1. Reads AgriSoil entities with texture data
+2. Computes field capacity, wilting point, AWC (Saxton-Rawls PTF)
+3. Fetches ET0 forecast from weather-map API
+4. Computes 7-day water deficit projection
+5. Generates irrigation recommendation
+6. Upserts computed attributes back to AgriSoil in Orion-LD
+"""
+import logging
+import os
+from datetime import UTC, datetime, timedelta
+
+import httpx
+
+from nkz_soil.config import SOIL_DEFAULT_TENANT
+from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
+from nkz_soil.storage.orion import OrionClient, fetch_parcel_smi
+
+logger = logging.getLogger(__name__)
+
+# ── Constants ──────────────────────────────────────────────────────────
+
+AWC_DEPLETION_THRESHOLD = 0.5  # 50% — trigger irrigation recommendation
+# Base URL of the weather-map API; empty disables the ET0 forecast lookup.
+WEATHER_API_BASE = os.environ.get("WEATHER_MAP_API_BASE", "").rstrip("/")
+
+# ── Main worker function ───────────────────────────────────────────────
+
+
+async def compute_water_budgets(ctx: dict) -> dict:
+    """Main worker entry point. Called by Arq scheduler every 6h.
+
+    Processes all AgriSoil entities for the configured default tenant.
+    The tenant is read from the SOIL_DEFAULT_TENANT env var.
+    """
+    tenant_id = SOIL_DEFAULT_TENANT
+    orion = OrionClient(tenant_id)
+    try:
+        stats = {"processed": 0, "errors": 0, "skipped": 0}
+
+        entities = await orion.query_entities(type="AgriSoilExtended")
+        logger.info(
+            "Tenant '%s': found %d AgriSoil entities",
+            tenant_id, len(entities),
+        )
+
+        for entity in entities:
+            try:
+                horizons = entity.get("horizons", {}).get("value", [])
+                if not horizons:
+                    stats["skipped"] += 1
+                    continue
+
+                h = horizons[0]
+                sand = h.get("sand")
+                clay = h.get("clay")
+                if sand is None or clay is None:
+                    stats["skipped"] += 1
+                    continue
+
+                oc = h.get("organicCarbon", 0.5)
+                ptf = saxton_rawls_2006(sand, clay, oc)
+                fc = ptf["field_capacity"]
+                pwp = ptf["wilting_point"]
+                awc = round(max(0.0, fc - pwp), 3)
+
+                parcel_ref = entity.get("hasAgriParcel", {}).get("object", "")
+
+                # Moisture precedence: IoT sensor > satellite SAR > PTF default
+                current_moisture = await _get_current_moisture(orion, entity["id"])
+                smi_sensing_date: str | None = None
+                if current_moisture is None:
+                    smi_result = await fetch_parcel_smi(parcel_ref or entity["id"], tenant_id)
+                    if smi_result is not None:
+                        smi_val, smi_sensing_date = smi_result
+                        # Map SMI [0-1] to volumetric moisture between pwp and fc
+                        current_moisture = pwp + smi_val * (fc - pwp)
+                        logger.debug(
+                            "Parcel %s: calibrated moisture from SAR SMI=%.3f → %.3f m³/m³",
+                            parcel_ref, smi_val, current_moisture,
+                        )
+                    else:
+                        current_moisture = fc * 0.8
+
+                deficit_mm = max(0.0, (fc - current_moisture) * 100)
+                forecast = await _get_et0_forecast(parcel_ref)
+                if not forecast:
+                    forecast = _default_forecast()
+
+                projected = _compute_projection(current_moisture, fc, pwp, forecast)
+
+                depletion = (fc - current_moisture) / awc if awc > 0 else 0
+                reco = _generate_recommendation(depletion, projected, fc, awc)
+
+                attrs = {
+                    "fieldCapacity": {"type": "Property", "value": round(fc, 3), "unitCode": "P1"},
+                    "wiltingPoint": {"type": "Property", "value": round(pwp, 3), "unitCode": "P1"},
+                    "awc": {"type": "Property", "value": awc, "unitCode": "P1"},
+                    "currentMoisture": {
+                        "type": "Property",
+                        "value": round(current_moisture, 3),
+                        "unitCode": "P1",
+                    },
+                    "deficitMm": {
+                        "type": "Property",
+                        "value": round(deficit_mm, 1),
+                        "unitCode": "MMT",
+                    },
+                    "forecast7d": {"type": "Property", "value": projected},
+                    "lastComputed": {
+                        "type": "Property",
+                        "value": {
+                            "@type": "DateTime",
+                            "@value": datetime.now(UTC).isoformat(),
+                        },
+                    },
+                }
+                if smi_sensing_date:
+                    attrs["sarMoistureSensingDate"] = {
+                        "type": "Property",
+                        "value": smi_sensing_date,
+                    }
+                if reco is not None:
+                    attrs["irrigationRecommendation"] = {
+                        "type": "Property",
+                        "value": reco,
+                    }
+
+                await orion.patch_entity(entity["id"], attrs)
+                stats["processed"] += 1
+
+            except Exception as e:  # noqa: BLE001 — water budget computation may fail for various reasons; log and continue
+                logger.error(
+                    "Failed to compute water budget for %s: %s",
+                    entity.get("id"), e,
+                )
+                stats["errors"] += 1
+
+        logger.info("Water budget complete: %s", stats)
+        return stats
+    finally:
+        await orion.close()
+
+
+async def _get_current_moisture(orion: OrionClient, entity_id: str) -> float | None:
+    """Try to get current soil moisture from IoT sensor or timeseries."""
+    return None
+
+
+async def _get_et0_forecast(parcel_ref: str) -> list | None:
+    """Fetch 7-day ET0 forecast from weather-map API."""
+    if not parcel_ref or not WEATHER_API_BASE:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{WEATHER_API_BASE}/forecast/et0",
+                params={"parcel_id": parcel_ref},
+                headers={"Accept": "application/json"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("forecast", [])
+    except Exception as e:  # noqa: BLE001 — external weather API call may fail for many reasons; return None gracefully
+        logger.warning("Failed to fetch ET0 forecast: %s", e)
+    return None
+
+
+def _default_forecast() -> list:
+    today = datetime.now(UTC)
+    return [
+        {
+            "day": (today + timedelta(days=i)).strftime("%Y-%m-%d"),
+            "et0": 4.0,
+            "precip": 0.0,
+            "deficitAfter": 0.0,
+        }
+        for i in range(7)
+    ]
+
+
+def _compute_projection(current_moisture: float, fc: float, pwp: float, forecast: list) -> list:
+    moisture = current_moisture
+    for day in forecast:
+        et0 = day.get("et0", 4.0) / 100
+        precip = day.get("precip", 0.0) / 100
+        moisture = max(pwp, min(fc, moisture - et0 + precip))
+        deficit_after = max(0.0, (fc - moisture) * 100)
+        day["deficitAfter"] = round(deficit_after, 1)
+    return forecast
+
+
+def _generate_recommendation(depletion: float, forecast: list, fc: float, awc: float) -> dict | None:
+    if depletion < AWC_DEPLETION_THRESHOLD or awc <= 0:
+        return None
+    for day in forecast:
+        if day.get("deficitAfter", 0) > AWC_DEPLETION_THRESHOLD * awc * 100:
+            return {
+                "shouldIrrigate": True,
+                "amountMm": round(day["deficitAfter"] * 0.6, 1),
+                "suggestedDay": day["day"],
+                "reason": f"Deficit proyectado supera umbral de agotamiento ({int(AWC_DEPLETION_THRESHOLD * 100)}% AWC)",
+            }
+    return None

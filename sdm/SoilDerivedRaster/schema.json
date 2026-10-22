@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nkz-os.org/sdm-proposals/SoilDerivedRaster/schema.json",
+  "title": "SoilDerivedRaster (SDM-004)",
+  "description": "Reference to a geospatial raster artifact in object storage with COG metadata. To be generalized to GeoRaster in Phase 3.",
+  "type": "object",
+  "allOf": [
+    {"$ref": "https://smart-data-models.github.io/data-models/common-schema.json#/definitions/GSMA-Commons"},
+    {
+      "properties": {
+        "type": {"type": "string", "enum": ["SoilDerivedRaster"]},
+        "refAgriParcel": {"$ref": "https://smart-data-models.github.io/data-models/common-schema.json#/definitions/EntityIdentifierType"},
+        "soilProperty": {"type": "string"},
+        "depthFrom": {"type": "number", "minimum": 0},
+        "depthTo": {"type": "number", "minimum": 0},
+        "storageUri": {"type": "string", "format": "uri"},
+        "format": {"type": "string", "enum": ["COG", "GeoTIFF", "NetCDF"]},
+        "crs": {"type": "string"},
+        "resolution": {"type": "number", "minimum": 0},
+        "generatedAt": {"type": "string", "format": "date-time"},
+        "uncertainty": {"type": "number"}
+      },
+      "required": ["id", "type", "refAgriParcel", "soilProperty", "storageUri", "format", "crs", "resolution", "generatedAt"]
+    }
+  ]
+}

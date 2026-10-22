@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nkz-os.org/sdm-proposals/SoilSurvey/schema.json",
+  "title": "SoilSurvey (SDM-003)",
+  "description": "Sampling campaign grouping multiple SoilSamplingPoints, with metadata, instrumentation, and tenant ownership.",
+  "type": "object",
+  "allOf": [
+    {"$ref": "https://smart-data-models.github.io/data-models/common-schema.json#/definitions/GSMA-Commons"},
+    {
+      "properties": {
+        "type": {"type": "string", "enum": ["SoilSurvey"]},
+        "surveyType": {"type": "string", "enum": ["lab-grid", "lab-targeted", "field-portable", "remote-sensing", "mixed"]},
+        "refAgriParcel": {"$ref": "https://smart-data-models.github.io/data-models/common-schema.json#/definitions/EntityIdentifierType"},
+        "startDate": {"type": "string", "format": "date-time"},
+        "endDate": {"type": "string", "format": "date-time"},
+        "instrumentation": {"type": "array", "items": {"type": "string"}},
+        "pointCount": {"type": "integer", "minimum": 0},
+        "tenant": {"type": "string"}
+      },
+      "required": ["id", "type", "surveyType", "startDate", "tenant"]
+    }
+  ]
+}

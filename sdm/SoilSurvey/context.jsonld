@@ -1,0 +1,8 @@
+{
+  "@context": {
+    "SoilSurvey": "https://nkz-os.org/sdm-proposals/SoilSurvey",
+    "surveyType": "https://nkz-os.org/sdm-proposals/SoilSurvey#surveyType",
+    "instrumentation": "https://nkz-os.org/sdm-proposals/SoilSurvey#instrumentation",
+    "pointCount": "https://nkz-os.org/sdm-proposals/SoilSurvey#pointCount"
+  }
+}

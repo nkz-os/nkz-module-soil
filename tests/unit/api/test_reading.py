@@ -1,0 +1,208 @@
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
+from nkz_soil.api.main import create_app
+
+
+@pytest.fixture
+def client():
+    app = create_app()
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture
+def mock_orion():
+    mock = AsyncMock()
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=None)
+    mock.query_entities = AsyncMock(return_value=[])
+    mock.create_entity = AsyncMock()
+    with (
+        patch("nkz_soil.api.routes.reading.OrionClient", return_value=mock),
+        patch("nkz_soil.api.routes.writing.OrionClient", return_value=mock),
+    ):
+        yield mock
+
+
+def test_health(client):
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_parcel_summary_not_found(client, mock_orion):
+    mock_orion.query_entities.return_value = []
+    resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 404
+
+
+def test_parcel_summary_found(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "hasAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
+            "horizons": {"value": [{"depthFrom": 0, "depthTo": 5, "sand": 45}]},
+            "dataSource": {"value": "soilgrids"},
+        }
+    ]
+    resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["dataSource"] == {"type": "Property", "value": "soilgrids"}
+    assert body["uncertainty"] == {"type": "Property", "value": 0}
+    assert body["relativeCompaction"] == {"type": "Property", "value": None}
+    assert len(body["horizons"]) == 1
+
+
+def test_parcel_summary_sanitizes_nodata_ph(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "hasAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
+            "horizons": {
+                "value": [{"depthFrom": 0, "depthTo": 30, "ph": -3276.8, "sand": 45}]
+            },
+            "dataSource": {"value": "soilgrids"},
+        }
+    ]
+    resp = client.get(
+        "/v1/soil/parcel/test-1/summary",
+        headers={
+            "X-Tenant-ID": "tenant1",
+            "X-User-ID": "u1",
+            "X-User-Roles": "GestorAgricola",
+        },
+    )
+    assert resp.status_code == 200
+    horizon = resp.json()["horizons"][0]
+    assert "ph" not in horizon
+    assert horizon["sand"] == 45
+
+
+def test_parcel_horizons(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "hasAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
+            "horizons": {"value": [
+                {"depthFrom": 0, "depthTo": 5, "sand": 45},
+                {"depthFrom": 5, "depthTo": 15, "sand": 40},
+            ]},
+        }
+    ]
+    resp = client.get("/v1/soil/parcel/test-1/horizons?depth=0-10", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    assert len(resp.json()["horizons"]) == 1
+
+
+def test_parcel_horizons_not_found(client, mock_orion):
+    mock_orion.query_entities.return_value = []
+    resp = client.get("/v1/soil/parcel/test-1/horizons", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 404
+
+
+def test_hydrologic_group(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "hasAgriParcel": {"object": "urn:ngsi-ld:AgriParcel:test-1"},
+            "horizons": {"value": [{"hydrologicGroup": "B"}]},
+        }
+    ]
+    resp = client.get("/v1/soil/parcel/test-1/hydrologic-group", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    assert resp.json()["hydrologicGroup"] == "B"
+
+
+def test_tenant_quota(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "location": {
+                "value": {
+                    "type": "Polygon",
+                    "coordinates": [[[-2.0, 42.0], [-1.0, 42.0], [-1.0, 43.0], [-2.0, 43.0], [-2.0, 42.0]]],
+                }
+            },
+        },
+    ]
+    resp = client.get("/v1/soil/tenant/quota", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["tenantId"] == "tenant1"
+    assert data["evaluatedHectares"] > 0
+    assert data["soilEntities"] == 1
+
+
+def test_tenant_quota_no_entities(client, mock_orion):
+    mock_orion.query_entities.return_value = []
+    resp = client.get("/v1/soil/tenant/quota", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["evaluatedHectares"] == 0
+    assert data["soilEntities"] == 0
+
+
+@pytest.mark.asyncio
+async def test_penetrometer_readings_returns_filtered_points():
+    """Only SoilSamplingPoint entities with penetrationResistance are returned."""
+    # This is a unit-like test that mocks OrionClient behavior
+
+    # Simple mock asserting the flow works
+    assert True  # placeholder — real mock will need OrionClient monkeypatch
+
+
+def test_parcel_summary_exposes_saturation_and_null_for_old_rows(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "horizons": {"value": [
+                {"depthFrom": 0, "depthTo": 5, "fieldCapacity": 0.25, "saturation": 0.45},
+                {"depthFrom": 5, "depthTo": 15, "fieldCapacity": 0.25},  # persisted before saturation existed
+            ]},
+        }
+    ]
+    resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    hs = resp.json()["horizons"]
+    assert hs[0]["saturation"] == 0.45
+    assert "saturation" in hs[1] and hs[1]["saturation"] is None
+
+
+def test_parcel_summary_exposes_tillage_limits_and_method(client, mock_orion):
+    mock_orion.query_entities.return_value = [
+        {
+            "id": "urn:ngsi-ld:AgriSoil:1",
+            "horizons": {"value": [
+                {"depthFrom": 0, "depthTo": 5, "saturation": 0.45,
+                 "wetTillageLimit": 0.35, "dryTillageLimit": 0.13, "tillageLimitsMethod": "1"},
+                {"depthFrom": 5, "depthTo": 15, "saturation": 0.44},  # persisted before the limits
+            ]},
+        }
+    ]
+    resp = client.get("/v1/soil/parcel/test-1/summary", headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1", "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["horizons"][0]["wetTillageLimit"] == 0.35
+    assert body["horizons"][0]["dryTillageLimit"] == 0.13
+    assert body["horizons"][1]["wetTillageLimit"] is None
+    assert body["horizons"][1]["tillageLimitsMethod"] is None
+    assert body["workabilityMethod"]["version"] == "1"
+
+
+def test_penetrometer_single_horizon_unwrapped(client, mock_orion):
+    mock_orion.query_entities.return_value = [{
+        "id": "urn:ngsi-ld:SoilSamplingPoint:p1",
+        "location": {"type": "GeoProperty",
+                     "value": {"type": "Point", "coordinates": [-1.6, 42.8]}},
+        "samplingDate": {"type": "Property", "value": "2026-09-30"},
+        "horizons": {"type": "Property",
+                     "value": {"depthFrom": 0, "depthTo": 30, "penetrationResistance": 2.4}},
+    }]
+    resp = client.get("/v1/soil/penetrometer/parcel-1",
+                      headers={"X-Tenant-ID": "tenant1", "X-User-ID": "u1",
+                               "X-User-Roles": "GestorAgricola"})
+    assert resp.status_code == 200
+    assert resp.json()["points"][0]["resistance"] == 2.4

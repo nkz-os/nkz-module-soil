@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soil-module-api
+  namespace: nekazari
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: soil-module-api
+  template:
+    metadata:
+      labels:
+        app: soil-module-api
+    spec:
+      containers:
+        - name: api
+          # Pin by digest after each GHCR push (amd64 manifest). Update via:
+          # docker manifest inspect ghcr.io/nkz-os/nkz-module-soil/soil-api:latest
+          image: ghcr.io/nkz-os/nkz-module-soil/soil-api:3483b09  # master f7996b2: Fix soil parcel API paths and AgriSoilExtended lookup
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: soil-module-config
+                optional: true
+            - secretRef:
+                name: soil-module-secret
+                optional: false
+          env:
+            # pg-dsn has a hyphen, so envFrom secretRef cannot expose it as an env
+            # var (invalid name) — map it explicitly. PG-backed provider health needs it.
+            - name: SOIL_PG_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: soil-module-secret
+                  key: pg-dsn
+            - name: ORION_LD_URL
+              value: "http://orion-ld-service:1026"
+            - name: ORION_BASE_URL
+              value: "http://orion-ld-service:1026"
+            - name: MINIO_ENDPOINT
+              value: "http://minio-service:9000"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: password
+            - name: REDIS_URL
+              value: "redis://:$(REDIS_PASSWORD)@redis-service:6379/0"
+            - name: CONTEXT_URL
+              value: "http://api-gateway-service:5000/ngsi-ld-context.json"
+            - name: REQUIRE_HMAC_SIGNATURE
+              value: "true"
+            - name: HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: secret
+            - name: INTERNAL_SERVICE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: internal-service-secret
+                  key: INTERNAL_SERVICE_SECRET
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3

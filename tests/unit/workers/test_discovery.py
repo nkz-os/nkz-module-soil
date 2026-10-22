@@ -1,0 +1,140 @@
+"""Tenant discovery must query the platform DB (where tenant_installed_modules
+lives), not the soil module's own DB. Mirrors weather-map's discover pattern."""
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+
+def test_platform_postgres_url_prefers_full_url(monkeypatch):
+    monkeypatch.setenv("POSTGRES_URL", "postgresql://u:p@h:5432/db")
+    from nkz_soil.workers.ingest import _platform_postgres_url
+    assert _platform_postgres_url() == "postgresql://u:p@h:5432/db"
+
+
+def test_platform_postgres_url_built_from_parts(monkeypatch):
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
+    monkeypatch.setenv("POSTGRES_HOST", "postgresql-service")
+    monkeypatch.setenv("POSTGRES_PORT", "5432")
+    monkeypatch.setenv("POSTGRES_DB", "nekazari")
+    monkeypatch.setenv("POSTGRES_USER", "postgres")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "secret")
+    from nkz_soil.workers.ingest import _platform_postgres_url
+    assert (
+        _platform_postgres_url()
+        == "postgresql://postgres:secret@postgresql-service:5432/nekazari"
+    )
+
+
+def test_platform_postgres_url_empty_without_credentials(monkeypatch):
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+    from nkz_soil.workers.ingest import _platform_postgres_url
+    # No password → cannot build a platform DSN → empty (caller falls back).
+    assert _platform_postgres_url() == ""
+
+
+@pytest.mark.asyncio
+async def test_backfill_uses_orionclient_when_tenants_found_in_db(monkeypatch):
+    """When tenants come from the platform DB, the Orion-scan block is skipped.
+
+    A function-local `import OrionClient` inside that block used to shadow the
+    module-level name for the whole function, so the main loop raised
+    UnboundLocalError once DB discovery actually returned tenants.
+    """
+    monkeypatch.setenv("POSTGRES_URL", "postgresql://u:p@h:5432/nekazari")
+
+    # asyncpg.connect -> conn.fetch returns one enabled soil tenant
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=[{"tenant_id": "acmefarm"}])
+    conn.close = AsyncMock()
+
+    # OrionClient: one parcel without soil → must enqueue one ingest job
+    orion = AsyncMock()
+    orion.__aenter__ = AsyncMock(return_value=orion)
+    orion.__aexit__ = AsyncMock(return_value=None)
+    orion.query_entities = AsyncMock(side_effect=[
+        [{"id": "urn:ngsi-ld:AgriParcel:p1", "location": {"value": {"type": "Point", "coordinates": [0, 0]}}}],
+        [],  # no AgriSoilExtended yet
+    ])
+
+    redis = AsyncMock()
+    redis.enqueue_job = AsyncMock()
+
+    import asyncpg
+    from nkz_soil.workers.ingest import backfill_parcels_without_soil
+
+    with patch.object(asyncpg, "connect", AsyncMock(return_value=conn)), \
+         patch("nkz_soil.workers.ingest.OrionClient", return_value=orion):
+        await backfill_parcels_without_soil({"redis": redis})
+
+    redis.enqueue_job.assert_awaited_once()
+    args = redis.enqueue_job.call_args[0]
+    assert args[0] == "ingest_parcel"
+    assert args[1] == "p1"
+    assert args[2] == "acmefarm"
+
+
+@pytest.mark.asyncio
+async def test_backfill_skips_parcels_whose_soil_comes_back_as_refagriparcel(monkeypatch):
+    """Orion compacts the relationship to the legacy alias refAgriParcel.
+
+    Reading only hasAgriParcel left the "already has soil" set empty, so every
+    parcel was re-ingested on every run (seen live 2026-10-09: 19 enqueued).
+    """
+    monkeypatch.setenv("POSTGRES_URL", "postgresql://u:p@h:5432/nekazari")
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=[{"tenant_id": "acmefarm"}])
+    conn.close = AsyncMock()
+
+    orion = AsyncMock()
+    orion.__aenter__ = AsyncMock(return_value=orion)
+    orion.__aexit__ = AsyncMock(return_value=None)
+    orion.query_entities = AsyncMock(side_effect=[
+        [{"id": "urn:ngsi-ld:AgriParcel:p1", "location": {"value": {}}},
+         {"id": "urn:ngsi-ld:AgriParcel:p2", "location": {"value": {}}}],
+        [{"id": "urn:ngsi-ld:AgriSoilExtended:p1",
+          "refAgriParcel": {"type": "Relationship", "object": "urn:ngsi-ld:AgriParcel:p1"}}],
+    ])
+    redis = AsyncMock()
+    redis.enqueue_job = AsyncMock()
+
+    import asyncpg
+    from nkz_soil.workers.ingest import backfill_parcels_without_soil
+
+    with patch.object(asyncpg, "connect", AsyncMock(return_value=conn)), \
+         patch("nkz_soil.workers.ingest.OrionClient", return_value=orion):
+        await backfill_parcels_without_soil({"redis": redis})
+
+    redis.enqueue_job.assert_awaited_once()
+    assert redis.enqueue_job.call_args[0][1] == "p2"
+
+
+@pytest.mark.asyncio
+async def test_no_tenants_without_db_or_env_and_no_guessing(monkeypatch):
+    """Without the platform DB and SOIL_ENABLED_TENANTS there is nothing to scan:
+    no hardcoded tenant names are probed in Orion."""
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+    monkeypatch.delenv("SOIL_ENABLED_TENANTS", raising=False)
+    import logging
+
+    from nkz_soil.workers.ingest import _soil_tenants
+
+    with patch("nkz_soil.workers.ingest.OrionClient") as orion:
+        tenants = await _soil_tenants(logging.getLogger("test"))
+    assert tenants == []
+    orion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_tenants_from_env_when_no_db(monkeypatch):
+    monkeypatch.delenv("POSTGRES_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+    monkeypatch.setenv("SOIL_ENABLED_TENANTS", "t1, t2")
+    import logging
+
+    from nkz_soil.workers.ingest import _soil_tenants
+
+    assert await _soil_tenants(logging.getLogger("test")) == ["t1", "t2"]

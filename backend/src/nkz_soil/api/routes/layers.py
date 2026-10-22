@@ -1,0 +1,257 @@
+import logging
+
+from fastapi import APIRouter, HTTPException
+from nkz_platform_sdk import AuthContext
+
+from nkz_soil.api.dependencies import require_auth
+from nkz_soil.api.geojson import build_parcel_featurecollection, is_allowed_attribute
+from nkz_soil.api.limiter import limiter
+from nkz_soil.storage.orion import OrionClient, parcel_ref_query
+
+logger = logging.getLogger(__name__)
+_REQUIRE_AUTH = require_auth()
+
+# Map layer IDs to AgriSoil horizon property names
+_LAYER_PROPERTY_MAP = {
+    "soil-usda-texture": "usdaTextureClass",
+    "soil-hydrologic-group": "hydrologicGroup",
+    "soil-ksat": "ksatSaturated",
+    "soil-clay": "clay",
+    "soil-organic-carbon": "organicCarbon",
+    "soil-ph": "ph",
+    "soil-compaction": "relativeCompaction",
+    "soil-susceptibility": "compactionSusceptibilityScore",
+}
+
+router = APIRouter()
+
+MANIFEST = {
+    "layers": [
+        {
+            "id": "soil-usda-texture",
+            "label": "USDA Soil Texture Class",
+            "category": "texture",
+            "type": "categorical",
+            "values": ["sand", "loamy-sand", "sandy-loam", "loam", "silt-loam", "silt",
+                       "sandy-clay-loam", "clay-loam", "silty-clay-loam", "sandy-clay", "silty-clay", "clay"],
+            "colorRamp": ["#e9d8a6", "#e6c878", "#d8a657", "#bb9457", "#a3b18a", "#8cb369",
+                          "#c98b5b", "#9c6644", "#7f9172", "#9e2a2b", "#6d597a", "#582f0e"],
+            "unit": None,
+            "depths": ["0-30", "30-60"],
+        },
+        {
+            "id": "soil-hydrologic-group",
+            "label": "Hydrologic Group (SCS)",
+            "category": "hydrology",
+            "type": "categorical",
+            "values": ["A", "B", "C", "D"],
+            "colorRamp": ["#2c7bb6", "#abd9e9", "#fdae61", "#d7191c"],
+            "unit": None,
+            "depths": ["0-30", "30-60"],
+        },
+        {
+            "id": "soil-ksat",
+            "label": "Hydraulic Conductivity (Ksat)",
+            "category": "hydrology",
+            "type": "continuous",
+            "range": [0, 50],
+            "unit": "mm/h",
+            "colorRamp": "viridis",
+            "depths": ["0-5", "5-15", "15-30", "30-60", "60-100"],
+        },
+        {
+            "id": "soil-clay",
+            "label": "Clay Content",
+            "category": "texture",
+            "type": "continuous",
+            "range": [0, 100],
+            "unit": "%",
+            "colorRamp": "YlOrBr",
+            "depths": ["0-30", "30-60", "60-100"],
+        },
+        {
+            "id": "soil-organic-carbon",
+            "label": "Organic Carbon",
+            "category": "carbon",
+            "type": "continuous",
+            "range": [0, 10],
+            "unit": "%",
+            "colorRamp": "BrBG",
+            "depths": ["0-5", "5-15", "15-30", "30-60", "60-100"],
+        },
+        {
+            "id": "soil-ph",
+            "label": "Soil pH",
+            "category": "chemistry",
+            "type": "continuous",
+            "range": [3, 10],
+            "unit": "pH",
+            "colorRamp": "Spectral",
+            "depths": ["0-5", "5-15", "15-30", "30-60", "60-100"],
+        },
+        {
+            "id": "soil-compaction",
+            "label": "Relative Compaction",
+            "category": "physical",
+            "type": "categorical",
+            "values": ["normal", "slight", "moderate", "severe"],
+            "colorRamp": ["#1a9850", "#91cf60", "#fc8d59", "#d73027"],
+            "unit": None,
+            "depths": ["0-5", "5-15", "15-30", "30-60", "60-100"],
+        },
+        {
+            "id": "soil-susceptibility",
+            "label": "Compaction Susceptibility",
+            "category": "physical",
+            "type": "continuous",
+            "range": [0, 100],
+            "unit": "score",
+            "colorRamp": "RdYlGn-r",
+            "depths": ["0-30"],
+        },
+    ]
+}
+
+
+@router.get("/layers/manifest")
+@limiter.exempt
+async def layers_manifest():
+    return MANIFEST
+
+
+@router.get("/layers/parcels.geojson")
+@limiter.exempt
+async def parcels_geojson(
+    attribute: str,
+    scope: str = "all",
+    parcel: str | None = None,
+    auth: AuthContext = _REQUIRE_AUTH,
+):
+    if not is_allowed_attribute(attribute):
+        raise HTTPException(status_code=400, detail=f"attribute '{attribute}' is not a servable layer")
+    async with OrionClient(auth.tenant_id) as orion:
+        if scope == "selected" and parcel:
+            entities = await orion.query_entities(
+                type="AgriSoilExtended",
+                q=parcel_ref_query(parcel),
+            )
+        else:
+            entities = await orion.query_entities(type="AgriSoilExtended")
+    return build_parcel_featurecollection(entities, attribute)
+
+
+@router.get("/layers/{layer_id}/render")
+@limiter.exempt
+async def render_layer(
+    layer_id: str,
+    parcel_id: str,
+    depth: str = "0-30",
+    auth: AuthContext = _REQUIRE_AUTH,
+):
+    """Serve or generate a raster layer for a soil property."""
+    from nkz_soil.storage.minio import generate_presigned_url, get_minio_client
+
+    tenant_id = auth.tenant_id
+    depth_from, depth_to = map(int, depth.split("-"))
+    horizon_prop = _LAYER_PROPERTY_MAP.get(layer_id)
+    if not horizon_prop:
+        raise HTTPException(status_code=404, detail=f"Unknown layer: {layer_id}")
+
+    async with OrionClient(tenant_id) as orion:
+        rasters = await orion.query_entities(
+            type="SoilDerivedRaster",
+            q=parcel_ref_query(parcel_id),
+        )
+        matching = [
+            r for r in rasters
+            if (
+                r.get("soilProperty", {}).get("value") == horizon_prop
+                and r.get("depthFrom", {}).get("value") == depth_from
+                and r.get("depthTo", {}).get("value") == depth_to
+            )
+        ]
+        if matching:
+            raster = matching[0]
+            uri = raster.get("storageUri", {}).get("value", "")
+            if uri:
+                s3 = get_minio_client()
+                bucket, key = uri.replace("s3://", "").split("/", 1)
+                url = generate_presigned_url(s3, bucket, key)
+                return {
+                    "url": url,
+                    "layerId": layer_id,
+                    "parcelId": parcel_id,
+                    "depth": depth,
+                    "generated": False,
+                }
+
+        soils = await orion.query_entities(
+            type="AgriSoilExtended",
+            q=parcel_ref_query(parcel_id),
+        )
+
+    sample_points: list[dict] = []
+    for soil in soils:
+        horizons = soil.get("horizons", {}).get("value", [])
+        location = soil.get("location", {}).get("value", {})
+        if not location:
+            continue
+
+        # Use centroid of geometry as sample point
+        centroid = _geometry_centroid(location)
+        if centroid is None:
+            continue
+
+        for h in horizons:
+            if h.get("depthFrom") == depth_from and h.get("depthTo") == depth_to:
+                value = h.get(horizon_prop)
+                if value is not None and isinstance(value, (int, float)):
+                    sample_points.append({
+                        "x": centroid[0],
+                        "y": centroid[1],
+                        "value": float(value),
+                    })
+                break
+
+    if not sample_points:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No soil data available for {layer_id} at depth {depth}",
+        )
+
+    # Generate raster
+    from nkz_soil.interpolation.raster import generate_raster
+
+    result = await generate_raster(
+        tenant_id=tenant_id,
+        parcel_id=parcel_id,
+        property_name=horizon_prop,
+        depth_from=depth_from,
+        depth_to=depth_to,
+        sample_points=sample_points,
+    )
+
+    return {
+        "url": result["url"],
+        "layerId": layer_id,
+        "parcelId": parcel_id,
+        "depth": depth,
+        "generated": True,
+        "method": result["method"],
+        "entityId": result["entity_id"],
+    }
+
+
+def _geometry_centroid(geometry: dict) -> tuple[float, float] | None:
+    """Extract centroid from a GeoJSON geometry."""
+    try:
+        if geometry.get("type") == "Point":
+            return tuple(geometry["coordinates"])
+        if geometry.get("type") == "Polygon":
+            coords = geometry["coordinates"][0]
+            lon = sum(c[0] for c in coords) / len(coords)
+            lat = sum(c[1] for c in coords) / len(coords)
+            return (lon, lat)
+    except (KeyError, IndexError, TypeError):
+        pass
+    return None

@@ -1,0 +1,15 @@
+{
+  "id": "urn:ngsi-ld:SoilDerivedRaster:parcel-123:awc:0-30",
+  "type": "SoilDerivedRaster",
+  "refAgriParcel": {"type": "Relationship", "object": "urn:ngsi-ld:AgriParcel:parcel-123"},
+  "soilProperty": {"type": "Property", "value": "availableWaterCapacity"},
+  "depthFrom": {"type": "Property", "value": 0, "unitCode": "CMT"},
+  "depthTo": {"type": "Property", "value": 30, "unitCode": "CMT"},
+  "storageUri": {"type": "Property", "value": "s3://nekazari-soil-derived/parcel-123/awc-0-30.tif"},
+  "format": {"type": "Property", "value": "COG"},
+  "crs": {"type": "Property", "value": "EPSG:4326"},
+  "resolution": {"type": "Property", "value": 10, "unitCode": "MTR"},
+  "generatedAt": {"type": "Property", "value": {"@type": "DateTime", "@value": "2026-05-23T10:00:00Z"}},
+  "uncertainty": {"type": "Property", "value": 0.08},
+  "@context": ["https://nkz-os.org/jsonld-contexts/v1/nkz-context.jsonld"]
+}
