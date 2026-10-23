@@ -1,54 +1,32 @@
-"""Tenant discovery must query the platform DB (where tenant_installed_modules
-lives), not the soil module's own DB. Mirrors weather-map's discover pattern."""
+"""Tenant discovery asks the platform where the soil module is enabled (internal
+API through the SDK) and falls back to SOIL_ENABLED_TENANTS; it never reads the
+platform database."""
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from nkz_platform_sdk.installations import InstalledTenantsUnavailable, TenantInstallations
 
 
-def test_platform_postgres_url_prefers_full_url(monkeypatch):
-    monkeypatch.setenv("POSTGRES_URL", "postgresql://u:p@h:5432/db")
-    from nkz_soil.workers.ingest import _platform_postgres_url
-    assert _platform_postgres_url() == "postgresql://u:p@h:5432/db"
-
-
-def test_platform_postgres_url_built_from_parts(monkeypatch):
-    monkeypatch.delenv("POSTGRES_URL", raising=False)
-    monkeypatch.setenv("POSTGRES_HOST", "postgresql-service")
-    monkeypatch.setenv("POSTGRES_PORT", "5432")
-    monkeypatch.setenv("POSTGRES_DB", "nekazari")
-    monkeypatch.setenv("POSTGRES_USER", "postgres")
-    monkeypatch.setenv("POSTGRES_PASSWORD", "secret")
-    from nkz_soil.workers.ingest import _platform_postgres_url
-    assert (
-        _platform_postgres_url()
-        == "postgresql://postgres:secret@postgresql-service:5432/nekazari"
+def _installed(*enabled, disabled=(), not_installed=()):
+    return AsyncMock(
+        return_value=TenantInstallations("soil", tuple(enabled), tuple(disabled), tuple(not_installed))
     )
 
 
-def test_platform_postgres_url_empty_without_credentials(monkeypatch):
-    monkeypatch.delenv("POSTGRES_URL", raising=False)
-    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
-    from nkz_soil.workers.ingest import _platform_postgres_url
-    # No password → cannot build a platform DSN → empty (caller falls back).
-    assert _platform_postgres_url() == ""
+def _unavailable():
+    return AsyncMock(side_effect=InstalledTenantsUnavailable("soil: down"))
 
 
 @pytest.mark.asyncio
-async def test_backfill_uses_orionclient_when_tenants_found_in_db(monkeypatch):
-    """When tenants come from the platform DB, the Orion-scan block is skipped.
+async def test_backfill_uses_orionclient_when_tenants_found_on_the_platform(monkeypatch):
+    """When tenants come from the platform, the Orion-scan block is skipped.
 
     A function-local `import OrionClient` inside that block used to shadow the
     module-level name for the whole function, so the main loop raised
     UnboundLocalError once DB discovery actually returned tenants.
     """
-    monkeypatch.setenv("POSTGRES_URL", "postgresql://u:p@h:5432/nekazari")
-
-    # asyncpg.connect -> conn.fetch returns one enabled soil tenant
-    conn = AsyncMock()
-    conn.fetch = AsyncMock(return_value=[{"tenant_id": "acmefarm"}])
-    conn.close = AsyncMock()
 
     # OrionClient: one parcel without soil → must enqueue one ingest job
     orion = AsyncMock()
@@ -62,10 +40,9 @@ async def test_backfill_uses_orionclient_when_tenants_found_in_db(monkeypatch):
     redis = AsyncMock()
     redis.enqueue_job = AsyncMock()
 
-    import asyncpg
     from nkz_soil.workers.ingest import backfill_parcels_without_soil
 
-    with patch.object(asyncpg, "connect", AsyncMock(return_value=conn)), \
+    with patch("nkz_soil.workers.ingest.installed_tenants", _installed("acmefarm")), \
          patch("nkz_soil.workers.ingest.OrionClient", return_value=orion):
         await backfill_parcels_without_soil({"redis": redis})
 
@@ -83,11 +60,6 @@ async def test_backfill_skips_parcels_whose_soil_comes_back_as_refagriparcel(mon
     Reading only hasAgriParcel left the "already has soil" set empty, so every
     parcel was re-ingested on every run (seen live 2026-10-09: 19 enqueued).
     """
-    monkeypatch.setenv("POSTGRES_URL", "postgresql://u:p@h:5432/nekazari")
-    conn = AsyncMock()
-    conn.fetch = AsyncMock(return_value=[{"tenant_id": "acmefarm"}])
-    conn.close = AsyncMock()
-
     orion = AsyncMock()
     orion.__aenter__ = AsyncMock(return_value=orion)
     orion.__aexit__ = AsyncMock(return_value=None)
@@ -100,10 +72,9 @@ async def test_backfill_skips_parcels_whose_soil_comes_back_as_refagriparcel(mon
     redis = AsyncMock()
     redis.enqueue_job = AsyncMock()
 
-    import asyncpg
     from nkz_soil.workers.ingest import backfill_parcels_without_soil
 
-    with patch.object(asyncpg, "connect", AsyncMock(return_value=conn)), \
+    with patch("nkz_soil.workers.ingest.installed_tenants", _installed("acmefarm")), \
          patch("nkz_soil.workers.ingest.OrionClient", return_value=orion):
         await backfill_parcels_without_soil({"redis": redis})
 
@@ -112,29 +83,40 @@ async def test_backfill_skips_parcels_whose_soil_comes_back_as_refagriparcel(mon
 
 
 @pytest.mark.asyncio
-async def test_no_tenants_without_db_or_env_and_no_guessing(monkeypatch):
-    """Without the platform DB and SOIL_ENABLED_TENANTS there is nothing to scan:
+async def test_no_tenants_without_platform_or_env_and_no_guessing(monkeypatch):
+    """Without the platform answer and SOIL_ENABLED_TENANTS there is nothing to scan:
     no hardcoded tenant names are probed in Orion."""
-    monkeypatch.delenv("POSTGRES_URL", raising=False)
-    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
     monkeypatch.delenv("SOIL_ENABLED_TENANTS", raising=False)
     import logging
 
     from nkz_soil.workers.ingest import _soil_tenants
 
-    with patch("nkz_soil.workers.ingest.OrionClient") as orion:
+    with patch("nkz_soil.workers.ingest.installed_tenants", _unavailable()), \
+         patch("nkz_soil.workers.ingest.OrionClient") as orion:
         tenants = await _soil_tenants(logging.getLogger("test"))
     assert tenants == []
     orion.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_tenants_from_env_when_no_db(monkeypatch):
-    monkeypatch.delenv("POSTGRES_URL", raising=False)
-    monkeypatch.delenv("POSTGRES_PASSWORD", raising=False)
+async def test_tenants_from_env_when_platform_unavailable(monkeypatch):
     monkeypatch.setenv("SOIL_ENABLED_TENANTS", "t1, t2")
     import logging
 
     from nkz_soil.workers.ingest import _soil_tenants
 
-    assert await _soil_tenants(logging.getLogger("test")) == ["t1", "t2"]
+    with patch("nkz_soil.workers.ingest.installed_tenants", _unavailable()):
+        assert await _soil_tenants(logging.getLogger("test")) == ["t1", "t2"]
+
+
+@pytest.mark.asyncio
+async def test_only_enabled_tenants_of_the_soil_module(monkeypatch):
+    monkeypatch.setenv("SOIL_ENABLED_TENANTS", "env-tenant")
+    import logging
+
+    from nkz_soil.workers.ingest import _soil_tenants
+
+    lookup = _installed("tenant-a", "tenant-b", disabled=("tenant-c",), not_installed=("tenant-d",))
+    with patch("nkz_soil.workers.ingest.installed_tenants", lookup):
+        assert await _soil_tenants(logging.getLogger("test")) == ["tenant-a", "tenant-b"]
+    lookup.assert_awaited_once_with("soil")
