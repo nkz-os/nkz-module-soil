@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from arq.connections import RedisSettings
 from arq.cron import CronJob
+from nkz_platform_sdk.installations import InstalledTenantsUnavailable, installed_tenants
 
 from nkz_soil.config import LOG_LEVEL, REDIS_URL
 from nkz_soil.logging_setup import configure_logging
@@ -78,28 +79,6 @@ PROVIDER_PRIORITIES = {
     "eu_soil_hydro": 20,
     "soilgrids": 10,
 }
-
-
-def _platform_postgres_url() -> str:
-    """Build the platform Postgres DSN (where tenant_installed_modules lives).
-
-    Tenant discovery must hit the platform DB, NOT the soil module's own DB
-    (SOIL_PG_DSN) — that DB has no tenant_installed_modules table, which is why
-    discovery always failed and fell back to a hardcoded tenant scan. Mirrors
-    weather-map's discover pattern: full POSTGRES_URL wins, else POSTGRES_* parts.
-    Returns "" when no credentials are available (caller falls back).
-    """
-    url = os.environ.get("POSTGRES_URL", "").strip()
-    if url:
-        return url
-    password = os.environ.get("POSTGRES_PASSWORD", "")
-    if not password:
-        return ""
-    host = os.environ.get("POSTGRES_HOST", "postgresql-service")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    db = os.environ.get("POSTGRES_DB", "nekazari")
-    user = os.environ.get("POSTGRES_USER", "postgres")
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
 
 @dataclass
@@ -604,25 +583,12 @@ def _aggregate_uncertainty(results: list) -> float:
 
 
 async def _soil_tenants(logger) -> list[str]:
-    """Tenants with the soil module enabled: platform DB, then env."""
-    import asyncpg
-
-    # tenant_installed_modules lives in the PLATFORM DB, not the soil module DB.
-    db_url = _platform_postgres_url()
-
-    # Discover tenants: try DB first, then env var, then guess from Orion
+    """Tenants with the soil module enabled: the platform's answer, then env."""
     tenants: list[str] = []
-    if db_url:
-        try:
-            conn = await asyncpg.connect(db_url)
-            rows = await conn.fetch(
-                "SELECT tenant_id FROM tenant_installed_modules "
-                "WHERE module_id='soil' AND is_enabled=true"
-            )
-            await conn.close()
-            tenants = [r["tenant_id"] for r in rows]
-        except Exception as e:  # noqa: BLE001 — DB connection may fail for many reasons; fallback to env
-            logger.warning("Backfill soil: DB query failed (%s), falling back to env", e)
+    try:
+        tenants = list((await installed_tenants("soil")).enabled)
+    except InstalledTenantsUnavailable as e:
+        logger.warning("Backfill soil: installed tenants unavailable (%s), falling back to env", e)
 
     if not tenants:
         env_tenants = os.environ.get("SOIL_ENABLED_TENANTS", "")
@@ -634,7 +600,7 @@ async def _soil_tenants(logger) -> list[str]:
         # No guessing: a hardcoded tenant list names one deployment and is
         # wrong for every other installation.
         logger.warning(
-            "Backfill soil: no tenants from the platform DB or SOIL_ENABLED_TENANTS; nothing to do"
+            "Backfill soil: no tenants from the platform or SOIL_ENABLED_TENANTS; nothing to do"
         )
     return tenants
 
