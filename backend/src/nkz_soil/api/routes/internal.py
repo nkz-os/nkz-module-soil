@@ -9,6 +9,7 @@ This module is registered in main.py BEFORE the require_auth middleware is appli
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from nkz_soil.api.dependencies import get_redis_pool
 from nkz_soil.config import INTERNAL_SERVICE_SECRET
@@ -45,7 +46,7 @@ async def setup_parcel(request: Request):
     Idempotent: uses same dedup hash as the Orion webhook.
 
     Headers: X-Internal-Service-Secret (required)
-    Body: { parcel_id, tenant_id, geometry? }
+    Body: { parcel_id, tenant_id, action?, geometry? }
     """
     _validate_internal_secret(request)
 
@@ -56,6 +57,13 @@ async def setup_parcel(request: Request):
 
     if not parcel_id or not tenant_id:
         raise HTTPException(status_code=422, detail="parcel_id and tenant_id are required")
+
+    action = body.get("action") or "activate"
+    if action not in ("activate", "deactivate", "teardown"):
+        raise HTTPException(status_code=400, detail="Invalid action")
+    # Only activation ingests; deactivating or deleting the parcel leaves the soil data as is.
+    if action != "activate":
+        return JSONResponse(status_code=200, content={"status": action, "parcelId": parcel_id})
 
     # If no geometry provided, resolve from Orion. `id` is not a queryable
     # attribute in NGSI-LD's `q` grammar — a `q='id=="..."'` filter always
