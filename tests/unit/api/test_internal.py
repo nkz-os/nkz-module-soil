@@ -150,3 +150,38 @@ async def test_setup_parcel_returns_404_when_entity_has_no_location(with_secret)
                 headers={"X-Internal-Service-Secret": "test-secret-123"},
             )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["deactivate", "teardown"])
+async def test_setup_parcel_deactivate_and_teardown_enqueue_nothing(with_secret, action):
+    """Only `activate` ingests: deactivating or deleting a parcel must not re-run the ingest."""
+    redis_mock = AsyncMock()
+    redis_mock.enqueue_job = AsyncMock(return_value=None)
+    app.state.redis = redis_mock
+
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/v1/soil/internal/setup-parcel",
+                json={"parcel_id": "test123", "tenant_id": "tenant1", "action": action},
+                headers={"X-Internal-Service-Secret": "test-secret-123"},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == action
+        redis_mock.enqueue_job.assert_not_awaited()
+    finally:
+        app.state.redis = None
+
+
+@pytest.mark.asyncio
+async def test_setup_parcel_unknown_action_returns_400(with_secret):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/v1/soil/internal/setup-parcel",
+            json={"parcel_id": "test123", "tenant_id": "tenant1", "action": "explode"},
+            headers={"X-Internal-Service-Secret": "test-secret-123"},
+        )
+    assert resp.status_code == 400
