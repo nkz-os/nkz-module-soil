@@ -137,10 +137,10 @@ def _download_cog(s3, uri: str) -> bytes:
 
 def _zonal_mean(data: bytes, geometry: dict) -> float | None:
     import numpy as np
-    from rasterio.io import MemoryFile
+    from rasterio import io as rio_io
     from rasterio.mask import mask
 
-    with MemoryFile(io.BytesIO(data)) as mem, mem.open() as src:
+    with rio_io.MemoryFile(io.BytesIO(data)) as mem, mem.open() as src:
         try:
             arr, _ = mask(src, [geometry], crop=True, filled=False, all_touched=True)
         except ValueError:  # zone does not overlap the raster
