@@ -95,9 +95,17 @@ def test_aggregate_uncertainty_empty():
 
 
 def test_primary_source():
-    r1 = make_result("soilgrids", [])
-    r2 = make_result("lab_analysis", [])
+    h = Horizon(depth_from=0, depth_to=5, sand=30)
+    r1 = make_result("soilgrids", [h])
+    r2 = make_result("lab_analysis", [h])
     assert _primary_source([r1, r2]) == "lab_analysis"
+
+
+def test_primary_source_ignores_empty_result():
+    h = Horizon(depth_from=0, depth_to=5, sand=30)
+    empty = make_result("lab_analysis", [])
+    filled = make_result("soilgrids", [h])
+    assert _primary_source([empty, filled]) == "soilgrids"
 
 
 def test_primary_source_empty():
