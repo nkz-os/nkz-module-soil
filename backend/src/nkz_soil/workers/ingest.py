@@ -112,9 +112,19 @@ class EnrichedHorizon:
     provenance: dict = None    # attr -> {source, license, redistributable}
 
 
+def _contributing(results: list) -> list:
+    """Results that supplied at least one horizon or attribute. An empty result
+    (e.g. a provider with no data for the parcel) must not win provenance."""
+    return [
+        r for r in results
+        if getattr(r, "horizons", None) or getattr(r, "attributes", None)
+    ]
+
+
 def _winner_source_per_attr(merged_attrs: dict, results: list[ProviderResult]) -> dict[str, dict]:
     """For each attribute key, find the highest-priority ProviderResult that supplied it."""
     winners: dict[str, dict] = {}
+    results = _contributing(results)
     sorted_results = sorted(results, key=lambda r: -r.priority)
     for attr in merged_attrs:
         for r in sorted_results:
@@ -135,6 +145,7 @@ def _highest_priority_source(results: list[ProviderResult]) -> str | None:
     single horizon can blend multiple providers) — this answers the
     coarser "who mainly supplied this parcel's soil data" question that
     `dataSource` in the API response represents."""
+    results = _contributing(results)
     if not results:
         return None
     return max(results, key=lambda r: r.priority).source_tag
@@ -195,7 +206,7 @@ def _legacy_results_to_provider_results(all_results: list) -> list[ProviderResul
             source_tag=r.provider,
             license=r.attribution or "unknown",
         )
-        for r in all_results
+        for r in _contributing(all_results)
         if not isinstance(r, ProviderResult) and hasattr(r, "provider")
     ]
 
@@ -571,6 +582,7 @@ def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
 
 
 def _primary_source(results: list) -> str:
+    results = _contributing(results)
     if not results:
         return "soilgrids"
     return max(results, key=lambda r: PROVIDER_PRIORITIES.get(r.provider, 0)).provider
