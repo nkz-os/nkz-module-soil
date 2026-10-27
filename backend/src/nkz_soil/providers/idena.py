@@ -84,22 +84,37 @@ class IdenaProvider:
     async def _get_features(self, lon: float, lat: float) -> list[dict]:
         """Recintos around (lon, lat); IDENA returns lon/lat order in EPSG:4326."""
         d = _SEARCH_HALF_DEG
+        return await self.features_for_bbox(lon - d, lat - d, lon + d, lat + d, count=50)
+
+    async def features_for_bbox(
+        self, min_lon: float, min_lat: float, max_lon: float, max_lat: float, count: int = 200
+    ) -> list[dict]:
+        """Recintos (soil map polygons) intersecting a lon/lat bbox."""
         params: dict[str, str | int] = {
             "service": "WFS",
             "version": "2.0.0",
             "request": "GetFeature",
             "typename": ",".join(SOIL_LAYERS),
-            "count": 50,
+            "count": count,
             "outputFormat": "application/json",
             "srsName": "EPSG:4326",
-            "bbox": f"{lon - d},{lat - d},{lon + d},{lat + d},EPSG:4326",
+            "bbox": f"{min_lon},{min_lat},{max_lon},{max_lat},EPSG:4326",
         }
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(WFS_URL, params=params)
         if resp.status_code != 200:
-            logger.warning("IDENA WFS returned %s for (%s, %s)", resp.status_code, lon, lat)
+            logger.warning(
+                "IDENA WFS returned %s for bbox (%s, %s, %s, %s)",
+                resp.status_code, min_lon, min_lat, max_lon, max_lat,
+            )
             return []
         return resp.json().get("features", [])
+
+    @staticmethod
+    def class_of_feature(feature: dict) -> str | None:
+        """Surface-horizon texture class label of a recinto, if it has a known one."""
+        label = (feature.get("properties", {}).get("CLASIF_HS1") or "").split(",")[0].strip()
+        return label if label in TEXTURE_CLASS_FRACTIONS else None
 
     @staticmethod
     def _containing_feature(features: list[dict], lon: float, lat: float) -> dict | None:
@@ -115,10 +130,10 @@ class IdenaProvider:
     ) -> list[Horizon]:
         if feature is None:
             return []
-        label = (feature.get("properties", {}).get("CLASIF_HS1") or "").split(",")[0].strip()
-        fractions = TEXTURE_CLASS_FRACTIONS.get(label)
-        if fractions is None:
+        label = self.class_of_feature(feature)
+        if label is None:
             return []
+        fractions = TEXTURE_CLASS_FRACTIONS[label]
         sand, silt, clay = fractions
 
         horizons: list[Horizon] = []
