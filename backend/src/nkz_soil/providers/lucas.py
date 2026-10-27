@@ -34,6 +34,7 @@ _IN_POLYGON_SQL = """
 SELECT clay_pct, sand_pct, silt_pct, oc_g_kg, ph_h2o
 FROM soil_module.lucas_topsoil_2018
 WHERE ST_Intersects(geom, ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))
+ORDER BY point_id
 LIMIT 50;
 """
 

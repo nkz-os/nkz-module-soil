@@ -87,9 +87,14 @@ class IdenaProvider:
         return await self.features_for_bbox(lon - d, lat - d, lon + d, lat + d, count=50)
 
     async def features_for_bbox(
-        self, min_lon: float, min_lat: float, max_lon: float, max_lat: float, count: int = 200
+        self, min_lon: float, min_lat: float, max_lon: float, max_lat: float,
+        count: int = 200, strict: bool = False,
     ) -> list[dict]:
-        """Recintos (soil map polygons) intersecting a lon/lat bbox."""
+        """Recintos (soil map polygons) intersecting a lon/lat bbox.
+
+        strict=False: a non-200 answer is logged and yields []. strict=True: a
+        non-200, timeout or connection error raises, so the caller can tell an
+        outage from a genuinely empty (200, no features) answer."""
         params: dict[str, str | int] = {
             "service": "WFS",
             "version": "2.0.0",
@@ -103,6 +108,8 @@ class IdenaProvider:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(WFS_URL, params=params)
         if resp.status_code != 200:
+            if strict:
+                raise RuntimeError(f"IDENA WFS returned {resp.status_code}")
             logger.warning(
                 "IDENA WFS returned %s for bbox (%s, %s, %s, %s)",
                 resp.status_code, min_lon, min_lat, max_lon, max_lat,

@@ -99,10 +99,13 @@ def _cache_key(tenant: str, parcel_id: str, zone: dict, depth: str) -> str:
     return f"soil:zonal:{tenant}:{_short_id(parcel_id)}:{zone['zoneVersion']}:{zone['zoneId']}:{depth}"
 
 
-async def invalidate_parcel(tenant: str, parcel_id: str, client=None) -> None:
-    """Drop every cached zone result of a parcel. Never raises: a cache failure
-    must not fail an ingest (entries then expire by TTL)."""
-    pattern = f"soil:zonal:{tenant}:{_short_id(parcel_id)}:*"
+async def invalidate_parcel(tenant: str, parcel_id: str | None, client=None) -> None:
+    """Drop every cached zone result of a parcel (of the whole tenant when
+    parcel_id is None, e.g. a sampling point not linked to a parcel). Never
+    raises: a cache failure must not fail the caller (entries expire by TTL)."""
+    pattern = (
+        f"soil:zonal:{tenant}:{_short_id(parcel_id)}:*" if parcel_id else f"soil:zonal:{tenant}:*"
+    )
     try:
         redis = client if client is not None else _cache_client()
         keys = [k async for k in redis.scan_iter(match=pattern)]
@@ -127,13 +130,16 @@ async def _sampling_points_in_zone(tenant: str, geometry: dict) -> list[dict]:
     return inside
 
 
-def _read_zonal_mean(s3, uri: str, geometry: dict) -> float | None:
+def _download_cog(s3, uri: str) -> bytes:
+    bucket, key = uri.replace("s3://", "").split("/", 1)
+    return s3.get_object(Bucket=bucket, Key=key)["Body"].read()
+
+
+def _zonal_mean(data: bytes, geometry: dict) -> float | None:
     import numpy as np
     from rasterio.io import MemoryFile
     from rasterio.mask import mask
 
-    bucket, key = uri.replace("s3://", "").split("/", 1)
-    data = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
     with MemoryFile(io.BytesIO(data)) as mem, mem.open() as src:
         try:
             arr, _ = mask(src, [geometry], crop=True, filled=False, all_touched=True)
@@ -147,12 +153,16 @@ def _read_zonal_mean(s3, uri: str, geometry: dict) -> float | None:
 
 
 async def _raster_values_in_zone(
-    tenant: str, parcel_id: str, geometry: dict, depth: tuple[int, int]
+    tenant: str, parcel_id: str, geometry: dict, depth: tuple[int, int], ctx: dict | None = None
 ) -> dict[str, float] | None:
+    """ctx memoises, per request, the raster entity list and each downloaded COG."""
+    ctx = ctx if ctx is not None else {}
     short = _short_id(parcel_id)
-    async with OrionClient(tenant) as orion:
-        entities = await orion.query_entities(type="SoilDerivedRaster")
-    s3 = get_minio_client()
+    if "raster_entities" not in ctx:
+        async with OrionClient(tenant) as orion:
+            ctx["raster_entities"] = await orion.query_entities(type="SoilDerivedRaster")
+    entities = ctx["raster_entities"]
+    cogs: dict = ctx.setdefault("cogs", {})
     lo, hi = depth
     acc: dict[str, list[tuple[float, float]]] = {}
     for e in entities:
@@ -167,7 +177,9 @@ async def _raster_values_in_zone(
         w = _overlap(d_from, d_to, lo, hi)
         if w <= 0:
             continue
-        mean = await asyncio.to_thread(_read_zonal_mean, s3, uri, geometry)
+        if uri not in cogs:
+            cogs[uri] = await asyncio.to_thread(_download_cog, get_minio_client(), uri)
+        mean = await asyncio.to_thread(_zonal_mean, cogs[uri], geometry)
         if mean is not None:
             acc.setdefault(prop, []).append((mean, w))
     out = {p: sum(v * w for v, w in vs) / sum(w for _, w in vs) for p, vs in acc.items()}
@@ -264,24 +276,37 @@ def _class_areas(features: list[dict], clip) -> dict[str, float]:
     return areas
 
 
+async def _parcel_idena_features(parcel, ctx: dict) -> list[dict]:
+    """IDENA recintos for the PARCEL bbox: one WFS call per request. An outage is
+    memoised too, so a 20-zone request does not hammer a failing service."""
+    if "idena_features" not in ctx:
+        try:
+            ctx["idena_features"] = (
+                "ok", await IdenaProvider().features_for_bbox(*parcel.bounds, count=1000, strict=True)
+            )
+        except Exception as exc:  # noqa: BLE001 — memoise the failure, re-raised below for every zone
+            ctx["idena_features"] = ("error", exc)
+    kind, payload = ctx["idena_features"]
+    if kind == "error":
+        raise payload
+    return payload
+
+
 async def _idena_zone_values(parcel_summary: dict, geometry: dict, ctx: dict) -> dict | None:
-    zone = shape(geometry)
-    provider = IdenaProvider()
-    zone_areas = _class_areas(await provider.features_for_bbox(*zone.bounds), zone)
+    pgeom = parcel_summary.get("parcelGeometry")
+    if not pgeom:
+        return None  # parcel footprint unknown: cannot show the zone differs
+    zone, parcel = shape(geometry), shape(pgeom)
+    features = await _parcel_idena_features(parcel, ctx)
+    zone_areas = _class_areas(features, zone)
     if not zone_areas:
         return None
     zone_dom = max(zone_areas, key=zone_areas.get)
-
     if "idena_parcel" not in ctx:
-        pgeom = parcel_summary.get("parcelGeometry")
-        if pgeom:
-            parcel = shape(pgeom)
-            ctx["idena_parcel"] = _class_areas(await provider.features_for_bbox(*parcel.bounds), parcel)
-        else:
-            ctx["idena_parcel"] = {}
+        ctx["idena_parcel"] = _class_areas(features, parcel)
     parcel_areas = ctx["idena_parcel"]
     if not parcel_areas:
-        return None  # parcel footprint unknown: cannot show the zone differs
+        return None
     parcel_dom = max(parcel_areas, key=parcel_areas.get)
     if len(parcel_areas) < 2 and zone_dom == parcel_dom:
         return None
@@ -296,6 +321,33 @@ async def resolve_zone_soil(
     zone: dict,
     depth: str = "0-60",
     ctx: dict | None = None,
+) -> dict:
+    """One zone, isolated: any failure yields the parcel values (parcel_inherited,
+    degraded so it is not cached) and a warning naming the zone."""
+    try:
+        return await _resolve_zone_soil(tenant, parcel_id, parcel_summary, zone, depth, ctx)
+    except Exception:
+        logger.warning(
+            "zonal resolution failed", extra={"tenant": tenant, "parcel": parcel_id,
+                                              "zone": zone.get("zoneId")}, exc_info=True,
+        )
+        try:
+            horizon = {k: _parcel_horizon(parcel_summary, _parse_depth(depth)).get(k) for k in _HORIZON_KEYS}
+        except Exception:  # noqa: BLE001 — parcel summary itself unusable
+            horizon = dict.fromkeys(_HORIZON_KEYS)
+        source = _val(parcel_summary.get("dataSource")) or "unknown"
+        res = _result(zone, source, PARCEL_INHERITED, horizon)
+        res["_degraded"] = True
+        return res
+
+
+async def _resolve_zone_soil(
+    tenant: str,
+    parcel_id: str,
+    parcel_summary: dict,
+    zone: dict,
+    depth: str,
+    ctx: dict | None,
 ) -> dict:
     ctx = ctx if ctx is not None else {}
     rng = _parse_depth(depth)
@@ -325,7 +377,7 @@ async def resolve_zone_soil(
     res = specific("lab_analysis", _lab_values(points, rng)) if points else None
     if res is None:
         res = specific("derived_raster", await attempt(
-            "derived_raster", _raster_values_in_zone(tenant, parcel_id, geometry, rng)))
+            "derived_raster", _raster_values_in_zone(tenant, parcel_id, geometry, rng, ctx)))
     if res is None:
         res = specific("idena", await attempt("idena", _idena_zone_values(parcel_summary, geometry, ctx)))
     if res is None:

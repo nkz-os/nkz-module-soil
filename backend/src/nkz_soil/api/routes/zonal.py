@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter
 from nkz_platform_sdk import AuthContext
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from shapely.geometry import shape
 
 from nkz_soil.api.dependencies import require_auth
@@ -24,17 +24,19 @@ class ZoneIn(BaseModel):
     zoneVersion: str
     geometry: dict
 
-    @field_validator("geometry")
-    @classmethod
-    def _polygonal(cls, g: dict) -> dict:
+    @model_validator(mode="after")
+    def _polygonal(self) -> "ZoneIn":
+        g = self.geometry
         if g.get("type") not in ("Polygon", "MultiPolygon"):
-            raise ValueError("geometry must be a Polygon or MultiPolygon")
+            raise ValueError(f"zone {self.zoneId}: geometry must be a Polygon or MultiPolygon")
         try:
-            if shape(g).is_empty:
-                raise ValueError("geometry is empty")
-        except (ValueError, TypeError, KeyError, AttributeError) as exc:
-            raise ValueError(f"invalid geometry: {exc}") from exc
-        return g
+            geom = shape(g)
+            empty, valid = geom.is_empty, geom.is_valid
+        except Exception as exc:
+            raise ValueError(f"zone {self.zoneId}: invalid geometry") from exc
+        if empty or not valid:
+            raise ValueError(f"zone {self.zoneId}: geometry is empty or invalid")
+        return self
 
 
 class ZonalRequest(BaseModel):
