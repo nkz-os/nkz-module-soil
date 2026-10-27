@@ -121,3 +121,26 @@ async def test_multipolygon_parcel_is_located(provider):
     assert lon == pytest.approx(-1.6, abs=0.002)
     assert lat == pytest.approx(42.8, abs=0.002)
     assert result.horizons
+
+
+@pytest.mark.asyncio
+async def test_features_for_bbox_sends_the_bbox():
+    import httpx
+    seen = {}
+
+    def handler(request):
+        seen.update(request.url.params)
+        return httpx.Response(200, json={"features": [{"id": 1}]})
+
+    real = httpx.AsyncClient
+    with patch("nkz_soil.providers.idena.httpx.AsyncClient",
+               lambda **kw: real(transport=httpx.MockTransport(handler), **kw)):
+        feats = await IdenaProvider().features_for_bbox(-1.6, 42.7, -1.5, 42.8)
+    assert feats == [{"id": 1}]
+    assert seen["bbox"] == "-1.6,42.7,-1.5,42.8,EPSG:4326"
+
+
+def test_class_of_feature():
+    assert IdenaProvider.class_of_feature({"properties": {"CLASIF_HS1": "Franca, calcárea"}}) == "Franca"
+    assert IdenaProvider.class_of_feature({"properties": {"CLASIF_HS1": "Roca"}}) is None
+    assert IdenaProvider.class_of_feature({"properties": {}}) is None

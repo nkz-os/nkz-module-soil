@@ -33,6 +33,7 @@ from nkz_soil.providers.lucas import LucasProvider
 from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.metrics import metrics
 from nkz_soil.providers.soilgrids import SoilGridsProvider
+from nkz_soil.services.zonal import invalidate_parcel
 from nkz_soil.storage.orion import OrionClient
 from nkz_soil.util.nodata import clean_nodata_value, is_soilgrids_nodata
 from nkz_soil.workers.water_budget import compute_water_budgets
@@ -413,6 +414,9 @@ async def ingest_parcel(
             })
         else:
             await orion.create_entity(entity)
+
+    # The parcel value changed: per-zone results derived from it are stale.
+    await invalidate_parcel(tenant_id, parcel_id)
 
     return {"status": "ingested", "parcelId": parcel_id, "horizons": len(merged_horizons)}
 

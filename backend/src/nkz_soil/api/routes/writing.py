@@ -15,6 +15,7 @@ from nkz_soil.models.fertility import (
     validate_fertility,
     validate_sampling_date,
 )
+from nkz_soil.services.zonal import invalidate_parcel
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
 
 router = APIRouter()
@@ -99,6 +100,9 @@ async def create_sampling_point(
     entity_id, entity = _sampling_point_entity(body.model_dump())
     async with OrionClient(tenant_id) as orion:
         await orion.create_entity(entity)
+
+    # A new point can change the per-zone soil of its parcel (or, unlinked, any).
+    await invalidate_parcel(tenant_id, body.parcel_id)
 
     return {"id": entity_id, "status": "created"}
 
@@ -398,6 +402,11 @@ async def create_sampling_points_batch(
 
     async with OrionClient(tenant_id) as orion:
         batch_result = await orion.create_entities_batch(entities)
+
+    if entities:
+        parcels = {c.get("parcel_id") for _, c in rows_to_create}
+        for pid in parcels:
+            await invalidate_parcel(tenant_id, pid)
 
     created = [
         {"id": eid, "row": row_by_entity_id[eid]}

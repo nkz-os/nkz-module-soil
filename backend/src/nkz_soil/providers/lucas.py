@@ -6,6 +6,8 @@ NEVER returned to consumers — only aggregated values per query location.
 """
 from __future__ import annotations
 
+import json
+
 from nkz_soil.models.domain import Horizon, SoilDataResult
 from nkz_soil.providers.base import geometry_intersects_bbox
 from nkz_soil.storage.pg import get_pool
@@ -26,6 +28,14 @@ WHERE ST_DWithin(
 )
 ORDER BY geom <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)
 LIMIT $4;
+"""
+
+_IN_POLYGON_SQL = """
+SELECT clay_pct, sand_pct, silt_pct, oc_g_kg, ph_h2o
+FROM soil_module.lucas_topsoil_2018
+WHERE ST_Intersects(geom, ST_SetSRID(ST_GeomFromGeoJSON($1), 4326))
+ORDER BY point_id
+LIMIT 50;
 """
 
 # DB column -> Horizon field (None = not mapped to a horizon attribute)
@@ -94,6 +104,27 @@ class LucasProvider:
             attribution="JRC LUCAS 2018 Topsoil", license="JRC-LUCAS-2018",
             redistributable=True, priority=self.priority,
         )
+
+    async def values_in_polygon(self, geometry: dict) -> dict[str, float] | None:
+        """Mean topsoil values of the LUCAS points INSIDE the polygon, or None if
+        there is none. Only aggregates leave this method (license: no raw points).
+        Keys: sand, silt, clay, organic_carbon (percent), ph."""
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(_IN_POLYGON_SQL, json.dumps(geometry))
+        if not rows:
+            return None
+        out: dict[str, float] = {}
+        for col, field in (
+            ("sand_pct", "sand"), ("silt_pct", "silt"), ("clay_pct", "clay"),
+            ("oc_g_kg", "organic_carbon"), ("ph_h2o", "ph"),
+        ):
+            vals = [float(r[col]) for r in rows if r[col] is not None]
+            if vals:
+                out[field] = round(sum(vals) / len(vals), 3)
+        if "organic_carbon" in out:
+            out["organic_carbon"] = round(out["organic_carbon"] / 10.0, 3)  # g/kg -> %
+        return out or None
 
     async def health(self) -> dict:
         pool = await get_pool()
