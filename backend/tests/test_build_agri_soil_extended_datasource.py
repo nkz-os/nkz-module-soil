@@ -4,7 +4,7 @@ always returning empty. Distinct from the LUCAS Texture Raster license
 redaction of raw sand/silt/clay — dataSource must be present even when
 those specific fields are legitimately withheld."""
 
-from nkz_soil.models.domain import SoilDataResult
+from nkz_soil.models.domain import Horizon, SoilDataResult
 from nkz_soil.providers.base import ProviderResult
 from nkz_soil.providers.lucas_texture_raster import LucasTextureRasterProvider
 from nkz_soil.providers.soilgrids import SoilGridsProvider
@@ -68,7 +68,7 @@ def _legacy_result(provider_name: str, priority: int) -> SoilDataResult:
     already stamped from the provider's own `provider.priority` right after
     fetch/cache-read (see `ingest_parcel`'s `result.priority = provider.priority`)."""
     return SoilDataResult(
-        provider=provider_name, horizons=[], uncertainty=0.2, geometry={},
+        provider=provider_name, horizons=[Horizon(depth_from=0, depth_to=5, sand=30.0)], uncertainty=0.2, geometry={},
         attribution="test", priority=priority,
     )
 
