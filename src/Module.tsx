@@ -13,7 +13,7 @@ export default defineModule({
     soft: '#e8f5ee',
     strong: '#2d6b4a',
   },
-  icon: 'terrain',
+  icon: 'layers',
   main: ModulePage,
   route: '/module/soil',
   navigation: {
