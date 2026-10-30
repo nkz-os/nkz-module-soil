@@ -31,6 +31,36 @@ K_METHODS = frozenset({
     "ammonium_acetate", "mehlich3", "ammonium_lactate", "calcium_ammonium_lactate",
 })
 
+# Multiplier converting a soil P test to its Olsen equivalent
+# (Villalobos et al. 2020, Table 5). The published table wins over the reference
+# script where they differ. Keys mirror P_METHODS exactly.
+OLSEN_FACTOR = {
+    "olsen": 1.0,
+    "ammonium_lactate": 0.25,
+    "mehlich3": 0.36,
+    "bray1": 0.47,
+    "ammonium_acetate_edta": 0.48,
+    "calcium_lactate": 0.49,
+    "calcium_lactate_acetate": 0.52,
+    "water": 3.8,
+    "cacl2": 25.0,
+}
+
+
+def olsen_equivalent(value_mg_kg: float, method: str) -> float:
+    """Convert a soil P test to its Olsen equivalent (Villalobos et al. 2020, Table 5).
+
+    Raises ValueError for a method without a published conversion or a bad value.
+    """
+    try:
+        factor = OLSEN_FACTOR[method]
+    except KeyError:
+        raise ValueError(f"unknown soil P method {method!r}") from None
+    if isinstance(value_mg_kg, bool) or not isinstance(value_mg_kg, (int, float)) \
+            or value_mg_kg < 0:
+        raise ValueError("soil P must be a number >= 0")
+    return value_mg_kg * factor
+
 
 def _is_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)

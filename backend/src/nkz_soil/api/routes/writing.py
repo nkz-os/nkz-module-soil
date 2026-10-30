@@ -17,6 +17,37 @@ from nkz_soil.models.fertility import (
 )
 from nkz_soil.services.zonal import invalidate_parcel
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
+from nkz_soil.util.ngsi import horizons_of
+
+
+def _sampling_value(entity: dict, property: str, depth_from: int, depth_to: int):
+    """Property value of a SoilSamplingPoint: horizons first, root fallback.
+
+    Sampling properties (penetrationResistance, ph, ...) live in
+    ``horizons.value[]``; the root level only serves legacy entities. The
+    horizon overlapping the requested depth range wins; with a single horizon
+    it is used regardless; the root attribute is the last resort.
+    """
+    horizons = horizons_of(entity)
+    for h in horizons:
+        hdf, hdt = h.get("depthFrom"), h.get("depthTo")
+        if isinstance(hdf, (int, float)) and isinstance(hdt, (int, float)) \
+                and hdt > depth_from and hdf < depth_to:
+            v = h.get(property)
+            if isinstance(v, dict):
+                v = v.get("value")
+            if v is not None:
+                return v
+    if len(horizons) == 1:
+        v = horizons[0].get(property)
+        if isinstance(v, dict):
+            v = v.get("value")
+        if v is not None:
+            return v
+    v = entity.get(property)
+    if isinstance(v, dict):
+        v = v.get("value")
+    return v
 
 router = APIRouter()
 _REQUIRE_AUTH = require_auth()
@@ -472,9 +503,7 @@ async def rasterize_parcel_property(
             if len(coords) < 2:
                 continue
 
-            prop_val = e.get(property)
-            if isinstance(prop_val, dict):
-                prop_val = prop_val.get("value")
+            prop_val = _sampling_value(e, property, depth_from, depth_to)
             if prop_val is None:
                 continue
 

@@ -108,6 +108,17 @@ class EnrichedHorizon:
     penetration_resistance: float | None = None
     relative_compaction: dict | None = None
     compaction_susceptibility: dict | None = None
+    # Lab fertility (from LabAnalysisProvider; None when no lab analysis)
+    organic_matter: float | None = None
+    total_nitrogen: float | None = None
+    nitrate_n: float | None = None
+    ammonium_n: float | None = None
+    phosphorus_available: float | None = None
+    phosphorus_method: str | None = None
+    potassium_exchangeable: float | None = None
+    potassium_method: str | None = None
+    carbonates: float | None = None
+    active_lime: float | None = None
     emit: dict = None          # redistributable-safe raw values for serialization
     provenance: dict = None    # attr -> {source, license, redistributable}
 
@@ -421,7 +432,11 @@ async def ingest_parcel(
 
 
 _MERGE_ATTRS = ["sand", "silt", "clay", "organic_carbon", "bulk_density",
-                "ph", "cec", "ec", "coarse_fragments", "penetration_resistance"]
+                "ph", "cec", "ec", "coarse_fragments", "penetration_resistance",
+                "organic_matter", "total_nitrogen", "nitrate_n", "ammonium_n",
+                "phosphorus_available", "phosphorus_method",
+                "potassium_exchangeable", "potassium_method",
+                "carbonates", "active_lime"]
 
 
 def _cascade_merge(results: list, depths: list[DepthInterval]) -> list[EnrichedHorizon]:
@@ -544,6 +559,18 @@ def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
         "ec": _emit_raw(horizon, "ec"),
         "coarseFragments": _emit_raw(horizon, "coarse_fragments"),
         "penetrationResistance": _emit_raw(horizon, "penetration_resistance"),
+        # Lab fertility — emitted through the same license gate as the rest of
+        # the measured attributes (lab analyses are the farmer's own data).
+        "organicMatter": _emit_raw(horizon, "organic_matter"),
+        "totalNitrogen": _emit_raw(horizon, "total_nitrogen"),
+        "nitrateN": _emit_raw(horizon, "nitrate_n"),
+        "ammoniumN": _emit_raw(horizon, "ammonium_n"),
+        "phosphorusAvailable": _emit_raw(horizon, "phosphorus_available"),
+        "phosphorusMethod": _emit_raw(horizon, "phosphorus_method"),
+        "potassiumExchangeable": _emit_raw(horizon, "potassium_exchangeable"),
+        "potassiumMethod": _emit_raw(horizon, "potassium_method"),
+        "carbonates": _emit_raw(horizon, "carbonates"),
+        "activeLime": _emit_raw(horizon, "active_lime"),
         # Derived products — always emitted (new works under the license).
         "ksatSaturated": horizon.ksat_saturated,
         "availableWaterCapacity": horizon.available_water_capacity,

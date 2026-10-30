@@ -50,6 +50,17 @@ class Horizon:
     available_water_capacity: float | None = None
     hydrologic_group: str | None = None
     penetration_resistance: float | None = None
+    # Lab fertility (Villalobos units frozen in models/fertility.py; None when absent)
+    organic_matter: float | None = None
+    total_nitrogen: float | None = None
+    nitrate_n: float | None = None
+    ammonium_n: float | None = None
+    phosphorus_available: float | None = None
+    phosphorus_method: str | None = None
+    potassium_exchangeable: float | None = None
+    potassium_method: str | None = None
+    carbonates: float | None = None
+    active_lime: float | None = None
 
 
 @dataclass
