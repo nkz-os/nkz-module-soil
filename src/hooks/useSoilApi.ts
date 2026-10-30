@@ -61,9 +61,6 @@ export function buildSoilApi(api: ApiClient) {
         `/parcel/${parcelApiPath(parcelId)}/horizons?depth=${encodeURIComponent(depth)}`
       ),
 
-    getWaterBudget: (parcelId: string) =>
-      api.get<Record<string, unknown>>(`/parcel/${parcelApiPath(parcelId)}/water-budget`),
-
     getParcelsGeoJson: (attribute: string, scope: 'selected' | 'all', parcel?: string) =>
       api.get<{ type: string; features: Array<{ geometry: unknown; properties: Record<string, unknown> }> }>(
         `/layers/parcels.geojson?attribute=${encodeURIComponent(attribute)}` +

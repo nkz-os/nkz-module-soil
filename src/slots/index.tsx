@@ -3,7 +3,6 @@ import { SoilPanel } from './SoilPanel';
 import { SoilProfileCard } from '../components/SoilProfileCard';
 import { SoilLayer } from '../components/slots/SoilLayer';
 import { SoilLayerToggle } from '../components/slots/SoilLayerToggle';
-import { WaterBudgetSlot } from '../components/slots/WaterBudgetSlot';
 import { SoilProvider } from '../services/soilLayerContext';
 
 type SlotType = 'entity-tree' | 'map-layer' | 'context-panel' | 'bottom-panel' | 'layer-toggle' | 'dashboard-widget';
@@ -36,14 +35,6 @@ export const moduleSlots: ModuleViewerSlots = {
     { id: 'soil-context-panel', moduleId: MODULE_ID, component: 'SoilPanel', priority: 10, localComponent: SoilPanel },
     { id: 'soil-profile-card', moduleId: MODULE_ID, component: 'SoilProfileCard', priority: 5,
       localComponent: SoilProfileCard, showWhen: { entityType: ['AgriParcel'] } },
-    {
-      id: 'soil-water-budget',
-      moduleId: MODULE_ID,
-      component: 'WaterBudgetSlot',
-      localComponent: WaterBudgetSlot,
-      priority: 35,
-      showWhen: { entityType: ['AgriParcel'] },
-    },
   ],
   'bottom-panel': [],
   'entity-tree': [],
