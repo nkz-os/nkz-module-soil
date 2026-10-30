@@ -36,7 +36,6 @@ from nkz_soil.providers.soilgrids import SoilGridsProvider
 from nkz_soil.services.zonal import invalidate_parcel
 from nkz_soil.storage.orion import OrionClient
 from nkz_soil.util.nodata import clean_nodata_value, is_soilgrids_nodata
-from nkz_soil.workers.water_budget import compute_water_budgets
 
 _PARCEL_URN_PREFIX = "urn:ngsi-ld:AgriParcel:"
 
@@ -844,7 +843,7 @@ def _parse_redis_url(url: str) -> RedisSettings:
 
 
 class WorkerSettings:
-    functions: list = [ingest_parcel, compute_water_budgets, backfill_parcels_without_soil]  # noqa: RUF012
+    functions: list = [ingest_parcel, backfill_parcels_without_soil]  # noqa: RUF012
     # Limit concurrency. arq's default (10) lets a backfill burst run 10
     # ingest_parcel jobs at once; on the 1-CPU limit that saturates the cgroup
     # and starves the `arq --check` liveness probe (it times out at 15s and
@@ -911,24 +910,6 @@ class WorkerSettings:
             keep_result_s=3600,
             keep_result_forever=False,
             max_tries=3,
-        ),
-        CronJob(
-            name="compute_water_budgets",
-            coroutine=compute_water_budgets,
-            month=None,
-            day=None,
-            weekday=None,
-            hour={0, 6, 12, 18},
-            minute=0,
-            second=0,
-            microsecond=0,
-            run_at_startup=False,
-            unique=True,
-            job_id="compute_water_budgets",
-            timeout_s=600,
-            keep_result_s=3600,
-            keep_result_forever=False,
-            max_tries=1,
         ),
     ]
     redis_settings = _parse_redis_url(REDIS_URL)
