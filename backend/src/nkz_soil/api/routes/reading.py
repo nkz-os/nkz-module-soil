@@ -106,7 +106,7 @@ async def parcel_raster(
             e
             for e in entities
             if (
-                e.get("property", {}).get("value") == property
+                (e.get("soilProperty") or e.get("property") or {}).get("value") == property
                 and e.get("depthFrom", {}).get("value") == depth_from
                 and e.get("depthTo", {}).get("value") == depth_to
             )
