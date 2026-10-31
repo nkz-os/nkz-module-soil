@@ -4,6 +4,8 @@ import { nkzModulePreset } from '@nekazari/module-builder';
 export default defineConfig(
   nkzModulePreset({
     viteConfig: {
+      // The preset pins NODE_ENV to production, which disables React's act() under vitest.
+      define: process.env.VITEST ? { 'process.env.NODE_ENV': JSON.stringify('test') } : {},
       server: {
         port: 5004,
         proxy: {
