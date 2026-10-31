@@ -14,6 +14,14 @@ import {
 
 type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
 
+const TABS: readonly Tab[] = ['dashboard', 'manual', 'csv', 'history'];
+
+// Tab selected by the URL: an explicit ?tab= wins (deep link from other modules to the
+// manual analysis form), else ?parcel opens the dashboard, else the default.
+function tabFromParam(requested: string | null): Tab {
+  return TABS.find((id) => id === requested) ?? 'dashboard';
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────
 // SoilHorizon is imported from useSoilApi.ts — horizons are the flat shape
 // returned by GET /parcel/{id}/summary (the backend unwraps NGSI-LD Property
@@ -126,14 +134,16 @@ function RefreshSoilButton({ parcelId }: { parcelId: string }) {
 
 export default function ModulePage() {
   const { t } = useTranslation('soil');
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<Tab>(() => tabFromParam(searchParams.get('tab')));
 
+  const tabParam = searchParams.get('tab');
+  const parcelParam = searchParams.get('parcel');
   useEffect(() => {
-    if (searchParams.get('parcel')) {
-      setActiveTab('dashboard');
+    if (tabParam || parcelParam) {
+      setActiveTab(tabFromParam(tabParam));
     }
-  }, [searchParams]);
+  }, [tabParam, parcelParam]);
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'dashboard', label: t('tabs.dashboard') },
