@@ -530,6 +530,17 @@ def _emit_raw(h: EnrichedHorizon, attr: str):
     return None
 
 
+def _texture_source(horizon: EnrichedHorizon) -> str | None:
+    """'measured' when the three fractions behind the class all came from a lab
+    analysis, 'estimated' for any other provider mix, None without a class."""
+    if horizon.usda_texture_class is None:
+        return None
+    prov = horizon.provenance or {}
+    if all(prov.get(a, {}).get("source") == "lab_analysis" for a in ("sand", "silt", "clay")):
+        return "measured"
+    return "estimated"
+
+
 def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
     return {
         "depthFrom": horizon.depth_from,
@@ -559,6 +570,7 @@ def _horizon_to_dict(horizon: EnrichedHorizon) -> dict:
         ),
         "hydrologicGroup": horizon.hydrologic_group,
         "usdaTextureClass": horizon.usda_texture_class,
+        "usdaTextureSource": _texture_source(horizon),
         "compactionSusceptibility": (
             {
                 "score": horizon.compaction_susceptibility["score"],

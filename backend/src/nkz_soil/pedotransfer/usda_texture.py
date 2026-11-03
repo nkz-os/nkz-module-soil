@@ -10,6 +10,13 @@ class is still emittable because it is our own derived work, not the source data
 """
 from __future__ import annotations
 
+# The 12 USDA classes, as the kebab-case slugs usda_texture_class() emits.
+USDA_TEXTURE_CLASSES: tuple[str, ...] = (
+    "sand", "loamy-sand", "sandy-loam", "loam", "silt-loam", "silt",
+    "sandy-clay-loam", "clay-loam", "silty-clay-loam",
+    "sandy-clay", "silty-clay", "clay",
+)
+
 
 def usda_texture_class(sand: float | None, silt: float | None, clay: float | None) -> str | None:
     if sand is None or silt is None or clay is None:

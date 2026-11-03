@@ -1,8 +1,11 @@
 import csv
 import io
 import uuid
+from datetime import UTC, datetime
+from typing import Literal
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+import httpx
+from fastapi import APIRouter, File, HTTPException, Request, Response, UploadFile
 from nkz_platform_sdk import AuthContext
 from pydantic import BaseModel
 
@@ -15,8 +18,10 @@ from nkz_soil.models.fertility import (
     validate_fertility,
     validate_sampling_date,
 )
+from nkz_soil.pedotransfer.usda_texture import USDA_TEXTURE_CLASSES
 from nkz_soil.services.zonal import invalidate_parcel
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
+from nkz_soil.util.declared_texture import ATTR as DECLARED_TEXTURE_ATTR
 from nkz_soil.util.ngsi import horizons_of
 
 
@@ -142,6 +147,57 @@ async def create_sampling_point(
     await invalidate_parcel(tenant_id, body.parcel_id)
 
     return {"id": entity_id, "status": "created"}
+
+
+class DeclaredTextureInput(BaseModel):
+    usda_texture_class: Literal[USDA_TEXTURE_CLASSES]  # type: ignore[valid-type]
+
+
+async def _soil_entity_id(orion: OrionClient, parcel_id: str) -> str:
+    entities = await orion.query_entities(
+        type="AgriSoilExtended", q=parcel_ref_query(parcel_id), limit=1
+    )
+    if not entities:
+        raise HTTPException(status_code=404, detail="No AgriSoil found for this parcel")
+    return entities[0]["id"]
+
+
+@router.put("/parcel/{parcel_id}/declared-texture")
+async def put_declared_texture(
+    parcel_id: str, body: DeclaredTextureInput, auth: AuthContext = _REQUIRE_AUTH
+):
+    """Declare the USDA texture class of the parcel topsoil (provenance 'entered').
+
+    Never a SoilSamplingPoint: it is not an analysis. Readers prefer a measured
+    value over it, and a re-ingest leaves it untouched.
+    """
+    async with OrionClient(auth.tenant_id) as orion:
+        entity_id = await _soil_entity_id(orion, parcel_id)
+        await orion.append_entity_attrs(entity_id, {
+            DECLARED_TEXTURE_ATTR: {
+                "type": "Property",
+                "value": body.usda_texture_class,
+                "observedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            },
+        })
+    return {
+        "parcelId": parcel_id,
+        "usdaTextureClass": body.usda_texture_class,
+        "source": "entered",
+    }
+
+
+@router.delete("/parcel/{parcel_id}/declared-texture", status_code=204)
+async def delete_declared_texture(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH):
+    """Withdraw a declaration; readers fall back to the estimated value. Idempotent."""
+    async with OrionClient(auth.tenant_id) as orion:
+        entity_id = await _soil_entity_id(orion, parcel_id)
+        try:
+            await orion.delete_entity_attr(entity_id, DECLARED_TEXTURE_ATTR)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 404:
+                raise
+    return Response(status_code=204)
 
 
 @router.post("/surveys")

@@ -193,6 +193,9 @@ class OrionClient:
         # that may introduce a field the entity didn't have before.
         await self._sdk.append_entity_attrs(entity_id, attrs, overwrite=True)
 
+    async def delete_entity_attr(self, entity_id: str, attr: str) -> None:
+        await self._sdk.delete_entity_attr(entity_id, attr)
+
     async def delete_entity(self, entity_id: str) -> None:
         await self._sdk.delete_entity(entity_id)
 
