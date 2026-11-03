@@ -6,10 +6,11 @@ touches it. Precedence per topsoil horizon: measured > entered > estimated.
 """
 from __future__ import annotations
 
-ATTR = "declaredUsdaTextureClass"
-# Orion may hand a term outside the platform @context back in prefixed or
-# full-IRI form; accept all three.
-_ATTR_FORMS = (ATTR, f"nkz:{ATTR}", f"https://nkz-os.org/ns/{ATTR}")
+_TERM = "declaredUsdaTextureClass"
+ATTR = f"nkz:{_TERM}"
+# Written as the nkz: term (IRI under the nkz namespace); Orion may return it short, prefixed or
+# as the full IRI: accept all three.
+_ATTR_FORMS = (_TERM, ATTR, f"https://nkz-os.org/ns/{_TERM}")
 TOPSOIL_MAX_DEPTH_CM = 30
 
 

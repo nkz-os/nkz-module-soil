@@ -130,7 +130,7 @@ def test_legacy_lab_led_horizon_without_source_counts_as_measured(client, store)
 def test_invalid_class_is_422(client, store, bad):
     store.seed("tenant-a", _entity("estimated"))
     assert client.put(URL, headers=H_A, json={"usda_texture_class": bad}).status_code == 422
-    assert "declaredUsdaTextureClass" not in store.tenants["tenant-a"][ENTITY_ID]
+    assert "nkz:declaredUsdaTextureClass" not in store.tenants["tenant-a"][ENTITY_ID]
 
 
 def test_all_twelve_classes_accepted(client, store):
@@ -175,7 +175,7 @@ def test_tenant_comes_from_identity_not_body(client, store):
     store.seed("tenant-a", _entity("estimated"))
     store.seed("tenant-b", _entity("estimated"))
     client.put(URL, headers=H_A, json={"usda_texture_class": "clay", "tenant_id": "tenant-b"})
-    assert "declaredUsdaTextureClass" not in store.tenants["tenant-b"][ENTITY_ID]
+    assert "nkz:declaredUsdaTextureClass" not in store.tenants["tenant-b"][ENTITY_ID]
 
 
 def test_full_iri_form_is_read(client, store):
@@ -219,7 +219,7 @@ async def test_reingest_does_not_overwrite_declared(client, store):
     # ingest rewrote the estimate ...
     assert stored["horizons"]["value"][0]["usdaTextureSource"] == "estimated"
     # ... and the declaration survived and still wins
-    assert stored["declaredUsdaTextureClass"]["value"] == "sandy-clay"
+    assert stored["nkz:declaredUsdaTextureClass"]["value"] == "sandy-clay"
     top, _ = _topsoil(client)
     assert top == {"usdaTextureClass": "sandy-clay", "source": "entered"}
 
@@ -241,3 +241,30 @@ def test_ingest_marks_lab_texture_measured():
     ]:
         h = _apply_pedotransfer(_cascade_merge(results, [DepthInterval(0, 5)]))[0]
         assert _horizon_to_dict(h)["usdaTextureSource"] == expected
+
+
+def test_written_and_deleted_attribute_is_the_nkz_term(client, store):
+    store.seed("tenant-a", _entity("estimated"))
+    client.put(URL, headers=H_A, json={"usda_texture_class": "loam"})
+    assert list(store.tenants["tenant-a"][ENTITY_ID]).count("nkz:declaredUsdaTextureClass") == 1
+    assert "declaredUsdaTextureClass" not in store.tenants["tenant-a"][ENTITY_ID]
+    assert client.delete(URL, headers=H_A).status_code == 204
+    # the fake raises 404 for a name that is not present, so a 204 with the key gone
+    # proves DELETE targeted the same attribute
+    assert "nkz:declaredUsdaTextureClass" not in store.tenants["tenant-a"][ENTITY_ID]
+
+
+@pytest.mark.asyncio
+async def test_sdk_delete_path_carries_the_prefixed_term():
+    from nkz_platform_sdk.orion import OrionClient as SdkOrion
+
+    seen = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        return httpx.Response(204)
+
+    c = SdkOrion("tenant-a", base_url="http://orion", context_url="http://ctx")
+    c._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    await c.delete_entity_attr(ENTITY_ID, "nkz:declaredUsdaTextureClass")
+    assert seen[0].endswith("/attrs/nkz%3AdeclaredUsdaTextureClass")
