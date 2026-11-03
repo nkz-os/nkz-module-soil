@@ -14,6 +14,7 @@ from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
 from nkz_soil.pedotransfer.usda_texture import usda_texture_class
 from nkz_soil.pedotransfer.workability import WORKABILITY_METHOD
 from nkz_soil.storage.orion import OrionClient, parcel_ref_query
+from nkz_soil.util.declared_texture import apply_declared_texture, declared_class, topsoil_texture
 from nkz_soil.util.ngsi import horizons_of
 from nkz_soil.util.nodata import sanitize_horizons
 
@@ -49,12 +50,15 @@ def _prop_value(entity: dict, key: str, default=None):
 async def parcel_summary(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH):
     async with OrionClient(auth.tenant_id) as orion:
         entity = await _first_agri_soil(orion, parcel_id)
+        declared = declared_class(entity)
+        horizons = apply_declared_texture(
+            sanitize_horizons(entity.get("horizons", {}).get("value", [])),
+            declared, _prop_value(entity, "dataSource"),
+        )
         return {
             # Horizons persisted before a derived key existed lack it -> null.
-            "horizons": [
-                {**h, **{k: h.get(k) for k in _DERIVED_KEYS}}
-                for h in sanitize_horizons(entity.get("horizons", {}).get("value", []))
-            ],
+            "horizons": [{**h, **{k: h.get(k) for k in _DERIVED_KEYS}} for h in horizons],
+            "topsoilTexture": topsoil_texture(horizons, declared),
             "workabilityMethod": WORKABILITY_METHOD,
             "dataSource": {
                 "type": "Property",
@@ -79,7 +83,10 @@ async def parcel_horizons(
     depth_from, depth_to = map(int, depth.split("-"))
     async with OrionClient(auth.tenant_id) as orion:
         entity = await _first_agri_soil(orion, parcel_id)
-        horizons = entity.get("horizons", {}).get("value", [])
+        horizons = apply_declared_texture(
+            entity.get("horizons", {}).get("value", []),
+            declared_class(entity), _prop_value(entity, "dataSource"),
+        )
         filtered = sanitize_horizons([
             h
             for h in horizons
