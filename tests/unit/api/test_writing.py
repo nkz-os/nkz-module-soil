@@ -18,6 +18,10 @@ def mock_orion():
     mock.__aenter__ = AsyncMock(return_value=mock)
     mock.__aexit__ = AsyncMock(return_value=None)
     mock.create_entity = AsyncMock()
+
+    async def _upsert(entities):
+        return {"upserted": len(entities), "errors": [], "entity_ids": [e["id"] for e in entities]}
+    mock.upsert_entities_batch = AsyncMock(side_effect=_upsert)
     with patch("nkz_soil.api.routes.writing.OrionClient", return_value=mock):
         yield mock
 
@@ -39,7 +43,7 @@ def test_create_sampling_point_valid(client, mock_orion):
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "created"
-    mock_orion.create_entity.assert_called_once()
+    mock_orion.upsert_entities_batch.assert_called_once()
 
 
 def test_create_sampling_point_texture_sum_invalid(client, mock_orion):
@@ -129,15 +133,15 @@ def test_create_sampling_point_with_fertility_and_parcel(client, mock_orion):
         "parcel_id": "parcel-1",
     }, headers=HEADERS)
     assert resp.status_code == 200
-    entity = mock_orion.create_entity.call_args.args[0]
-    horizon = entity["horizons"]["value"][0]
-    assert horizon["organicMatter"] == 2.1
-    assert horizon["phosphorusAvailable"] == 18
-    assert horizon["phosphorusMethod"] == "olsen"
-    assert horizon["potassiumMethod"] == "ammonium_acetate"
+    entity = mock_orion.upsert_entities_batch.call_args.args[0][0]
+    assert entity["type"] == "AgriSoilSample"
+    assert entity["organicMatter"]["value"] == 0.021  # % stored as a fraction (SDM)
+    assert entity["phosphorusAvailable"]["value"] == 18
+    assert entity["phosphorusMethod"]["value"] == "olsen"
+    assert entity["potassiumMethod"]["value"] == "ammoniumAcetate"
     assert entity["hasAgriParcel"] == {"type": "Relationship",
                                        "object": "urn:ngsi-ld:AgriParcel:parcel-1"}
-    assert entity["laboratoryReference"]["value"] == "LAB-2026-118"
+    assert entity["sampleCode"]["value"] == "LAB-2026-118"
 
 
 def test_create_sampling_point_omits_empty_optionals(client, mock_orion):
@@ -145,10 +149,12 @@ def test_create_sampling_point_omits_empty_optionals(client, mock_orion):
         "lat": 42.8, "lon": -1.6, "depth_from": 0, "depth_to": 30, "ph": 7.0,
     }, headers=HEADERS)
     assert resp.status_code == 200
-    entity = mock_orion.create_entity.call_args.args[0]
+    entity = mock_orion.upsert_entities_batch.call_args.args[0][0]
     assert _no_nulls(entity)
-    assert "samplingDate" not in entity and "hasAgriParcel" not in entity
-    assert entity["horizons"]["value"][0] == {"depthFrom": 0, "depthTo": 30, "ph": 7.0}
+    assert "sampleCode" not in entity and "hasAgriParcel" not in entity
+    results = {k for k, v in entity.items() if isinstance(v, dict) and "observedAt" in v}
+    assert results == {"soilPh"} and entity["soilPh"]["value"] == 7.0
+    assert (entity["depthFrom"]["value"], entity["depthTo"]["value"]) == (0, 0.3)
 
 
 def test_create_sampling_point_p_without_method_is_422(client, mock_orion):
@@ -158,7 +164,7 @@ def test_create_sampling_point_p_without_method_is_422(client, mock_orion):
     }, headers=HEADERS)
     assert resp.status_code == 422
     assert "phosphorusMethod" in resp.json()["detail"]
-    mock_orion.create_entity.assert_not_called()
+    mock_orion.upsert_entities_batch.assert_not_called()
 
 
 def test_create_sampling_point_urn_parcel_kept(client, mock_orion):
@@ -166,7 +172,7 @@ def test_create_sampling_point_urn_parcel_kept(client, mock_orion):
         "lat": 42.8, "lon": -1.6, "depth_from": 0, "depth_to": 30, "ph": 7.0,
         "parcel_id": "urn:ngsi-ld:AgriParcel:abc",
     }, headers=HEADERS)
-    entity = mock_orion.create_entity.call_args.args[0]
+    entity = mock_orion.upsert_entities_batch.call_args.args[0][0]
     assert entity["hasAgriParcel"]["object"] == "urn:ngsi-ld:AgriParcel:abc"
 
 
@@ -177,7 +183,7 @@ def test_create_sampling_point_non_iso_date_is_422(client, mock_orion):
     }, headers=HEADERS)
     assert resp.status_code == 422
     assert "YYYY-MM-DD" in resp.json()["detail"]
-    mock_orion.create_entity.assert_not_called()
+    mock_orion.upsert_entities_batch.assert_not_called()
 
 
 def test_create_sampling_point_fertility_requires_date(client, mock_orion):

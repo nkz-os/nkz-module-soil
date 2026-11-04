@@ -40,3 +40,27 @@ async def test_create_entities_batch_fallback_on_501():
             },
         ])
     assert result["created"] == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_upsert_entities_batch_chunks_and_collects_errors():
+    calls = []
+
+    def _reply(request):
+        import json as _json
+        batch = _json.loads(request.content)
+        calls.append(len(batch))
+        if len(calls) == 2:  # second chunk: one entity refused
+            return Response(207, json={"success": [batch[0]["id"]],
+                                       "errors": [{"entityId": batch[1]["id"], "error": {"title": "x"}}]})
+        return Response(204)
+
+    route = respx.post("http://localhost:1026/ngsi-ld/v1/entityOperations/upsert").mock(side_effect=_reply)
+    ents = [{"id": f"urn:ngsi-ld:AgriSoilSample:tenant1:{i}", "type": "AgriSoilSample"} for i in range(4)]
+    async with OrionClient("tenant1") as orion:
+        result = await orion.upsert_entities_batch(ents, chunk_size=2)
+    assert calls == [2, 2]
+    assert route.calls[0].request.url.params["options"] == "update"
+    assert result["upserted"] == 3 and len(result["errors"]) == 1
+    assert result["entity_ids"] == [e["id"] for e in ents[:3]]

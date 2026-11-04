@@ -56,7 +56,7 @@ def mock_orion():
 
 def _wire(mock, linked, by_geo, parcel=PARCEL):
     async def query(type, q=None, geometry=None, **_):
-        assert type == "SoilSamplingPoint"
+        assert set(type.split(",")) == {"SoilSamplingPoint", "AgriSoilSample"}
         return list(by_geo if geometry else linked)
     mock.query_entities = AsyncMock(side_effect=query)
     mock.get_entity = AsyncMock(return_value=parcel)

@@ -4,7 +4,7 @@ import { SlotShellCompact } from '@nekazari/viewer-kit';
 import { useSearchParams } from 'react-router-dom';
 import { useSoilApi, type SoilSummary, type SoilHorizon } from '../hooks/useSoilApi';
 import { useEntities } from '@nekazari/module-kit';
-import { ngsiValue, soilHorizons } from '../lib/ngsiValue';
+import { ngsiValue, sampleDate, soilHorizons } from '../lib/ngsiValue';
 import { sanitizeHorizons, sanitizeCompaction, isSoilgridsNodata } from '../lib/sanitizeHorizon';
 import { SoilProfileCard } from '../components/SoilProfileCard';
 import { Select } from '@nekazari/ui-kit';
@@ -814,7 +814,11 @@ function CsvUploadTab() {
 function HistoryTab() {
   const { t } = useTranslation('soil');
   const { data: surveys, isLoading: surveysLoading } = useEntities<NgsiLdEntity>('SoilSurvey');
-  const { data: samplingPoints, isLoading: pointsLoading } = useEntities<NgsiLdEntity>('SoilSamplingPoint');
+  const { data: legacyPoints, isLoading: legacyLoading } = useEntities<NgsiLdEntity>('SoilSamplingPoint');
+  const { data: soilSamples, isLoading: samplesLoading } = useEntities<NgsiLdEntity>('AgriSoilSample');
+  // New analyses are AgriSoilSample (one entity per depth); older ones stay SoilSamplingPoint.
+  const samplingPoints = [...(legacyPoints || []), ...(soilSamples || [])];
+  const pointsLoading = legacyLoading || samplesLoading;
   const [expandedSurvey, setExpandedSurvey] = useState<string | null>(null);
   const [sortDesc, setSortDesc] = useState(true);
 
@@ -838,8 +842,8 @@ function HistoryTab() {
   });
 
   const sortedPoints = [...pointsList].sort((a, b) => {
-    const dateA = (a as any).samplingDate?.value || '';
-    const dateB = (b as any).samplingDate?.value || '';
+    const dateA = sampleDate(a as Record<string, unknown>);
+    const dateB = sampleDate(b as Record<string, unknown>);
     return sortDesc ? dateB.localeCompare(dateA) : dateA.localeCompare(dateB);
   });
 
@@ -975,7 +979,7 @@ function HistoryTab() {
                   const ps = p as Record<string, Record<string, unknown> | undefined>;
                   const loc = ps.location;
                   const coords = (loc?.value as Record<string, unknown>)?.coordinates as number[] | undefined;
-                  const samplingDate = ps.samplingDate;
+                  const day = sampleDate(p as Record<string, unknown>);
                   const hList = soilHorizons(p as Record<string, unknown>) as Array<Record<string, unknown>>;
 
                   return (
@@ -984,7 +988,7 @@ function HistoryTab() {
                         {coords ? `${coords[1].toFixed(4)}, ${coords[0].toFixed(4)}` : '—'}
                       </td>
                       <td className="py-2 pr-4 text-nkz-muted">
-                        {typeof samplingDate?.value === 'string' ? samplingDate.value.substring(0, 10) : '—'}
+                        {day || '—'}
                       </td>
                       <td className="py-2 pr-4 text-nkz-muted">
                         {hList.length > 0 ? `${hList[0].depthFrom}–${hList[0].depthTo} cm` : '—'}

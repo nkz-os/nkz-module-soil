@@ -8,6 +8,12 @@ from nkz_soil.api.dependencies import require_auth
 from nkz_soil.api.limiter import limiter
 from nkz_soil.api.routes import providers as provider_routes
 from nkz_soil.config import SOIL_DEFAULT_CONTRACTED_HA
+from nkz_soil.models.agri_soil_sample import (
+    SOIL_SAMPLE_TYPES,
+    is_agri_soil_sample,
+    sampling_day,
+    to_analysis,
+)
 from nkz_soil.models.domain import DepthInterval
 from nkz_soil.pedotransfer.saxton_rawls import saxton_rawls_2006
 from nkz_soil.pedotransfer.scs_groups import scs_hydrologic_group
@@ -173,10 +179,10 @@ async def penetrometer_readings(
     parcel_id: str,
     auth: AuthContext = _REQUIRE_AUTH,
 ):
-    """Return SoilSamplingPoint entities with penetrationResistance for a parcel."""
+    """Soil samples (both types) with penetrationResistance for a parcel, in MPa."""
     async with OrionClient(auth.tenant_id) as orion:
         entities = await orion.query_entities(
-            type="SoilSamplingPoint",
+            type=SOIL_SAMPLE_TYPES,
             q=parcel_ref_query(parcel_id),
         )
 
@@ -198,8 +204,7 @@ async def penetrometer_readings(
             continue
         lon, lat = coords[0], coords[1]
 
-        sd = e.get("samplingDate", {}).get("value")
-        date_str = sd[:10] if sd and isinstance(sd, str) else None
+        date_str = sampling_day(e)
 
         points.append({
             "id": e.get("id"),
@@ -262,7 +267,7 @@ async def parcel_lab_analyses(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH)
     )
     async with OrionClient(auth.tenant_id) as orion:
         linked = await orion.query_entities(
-            type="SoilSamplingPoint", q=parcel_ref_query(parcel_urn),
+            type=SOIL_SAMPLE_TYPES, q=parcel_ref_query(parcel_urn),
         )
         parcel = await orion.get_entity(parcel_urn)
         geometry = _value(parcel, "location") if parcel else None
@@ -270,7 +275,7 @@ async def parcel_lab_analyses(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH)
         if isinstance(geometry, dict) and geometry.get("coordinates"):
             try:
                 by_geometry = await orion.query_entities(
-                    type="SoilSamplingPoint", geometry=geometry,
+                    type=SOIL_SAMPLE_TYPES, geometry=geometry,
                 )
             except httpx.HTTPError as exc:
                 # Legacy points are a fallback: keep the linked analyses on a geo-query failure.
@@ -282,16 +287,29 @@ async def parcel_lab_analyses(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH)
         raise HTTPException(status_code=404, detail="Parcel not found")
 
     entries: dict[str, dict] = {}
+    seen: set[str] = set()
+    samples: dict[str, list[dict]] = {"hasAgriParcel": [], "geometry": []}
     for entity, how in [(e, "hasAgriParcel") for e in linked] + \
                        [(e, "geometry") for e in by_geometry]:
-        if entity.get("id") in entries:
+        if entity.get("id") in seen:
             continue
+        seen.add(entity.get("id"))
         linked_to = _linked_parcel(entity)
         if how == "geometry" and linked_to and linked_to != parcel_urn:
             continue  # inside the polygon but declared for another parcel
+        if is_agri_soil_sample(entity):
+            # One entity per depth, regrouped below. Penetrometer-only depths are not lab
+            # analyses and must not join a lab core (FaST would lose its topsoil values).
+            if any(k not in _NON_LAB_KEYS for h in horizons_of(entity) for k in h):
+                samples[how].append(entity)
+            continue
         entry = _lab_entry(entity, how)
         if entry:
             entries[entry["id"]] = entry
+    for how, group in samples.items():
+        for entry in to_analysis(group, linked_by=how):
+            if any(k not in _NON_LAB_KEYS for h in entry["horizons"] for k in h):
+                entries[entry["id"]] = entry
     analyses = sorted(entries.values(), key=lambda a: a["samplingDate"] or "", reverse=True)
     return {"parcelId": parcel_urn, "analyses": analyses}
 

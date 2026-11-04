@@ -8,6 +8,10 @@ def horizons_of(entity: dict) -> list[dict]:
     Orion-LD returns a one-element array unwrapped (the object itself), so a sampling
     point with a single horizon comes back as a dict, not a list.
     """
+    from nkz_soil.models.agri_soil_sample import is_agri_soil_sample, to_horizon
+    if is_agri_soil_sample(entity):
+        # One sampled depth per entity, stored in SDM units: read it in API units.
+        return [to_horizon(entity)]
     raw = entity.get("horizons")
     if isinstance(raw, dict) and raw.get("type") == "Property" and "value" in raw:
         raw = raw["value"]

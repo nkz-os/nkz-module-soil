@@ -28,6 +28,10 @@ def mock_orion():
         }
 
     mock.create_entities_batch = AsyncMock(side_effect=_batch_create)
+
+    async def _upsert(entities):
+        return {"upserted": len(entities), "errors": [], "entity_ids": [e["id"] for e in entities]}
+    mock.upsert_entities_batch = AsyncMock(side_effect=_upsert)
     with patch("nkz_soil.api.routes.writing.OrionClient", return_value=mock):
         yield mock
 
@@ -56,7 +60,7 @@ def test_csv_batch_valid(client, mock_orion):
     data = resp.json()
     assert data["created"] == 2
     assert data["errors"] == 0
-    assert mock_orion.create_entities_batch.call_count == 1
+    assert mock_orion.upsert_entities_batch.call_count == 1
 
 
 def test_csv_batch_invalid_texture(client, mock_orion):
@@ -106,7 +110,7 @@ def test_csv_batch_mixed_valid_invalid(client, mock_orion):
     data = resp.json()
     assert data["created"] == 2
     assert data["errors"] == 1
-    assert mock_orion.create_entities_batch.call_count == 1
+    assert mock_orion.upsert_entities_batch.call_count == 1
 
 
 def test_csv_batch_with_aliases(client, mock_orion):
@@ -146,8 +150,8 @@ def test_csv_batch_fertility_columns(client, mock_orion):
     assert "phosphorusMethod" in data["errorDetails"][0]["error"]
     assert data["errorDetails"][1]["row"] == 4
     assert "YYYY-MM-DD" in data["errorDetails"][1]["error"]
-    entity = mock_orion.create_entities_batch.call_args.args[0][0]
-    horizon = entity["horizons"]["value"][0]
-    assert horizon["potassiumExchangeable"] == 240.0
-    assert horizon["potassiumMethod"] == "ammonium_acetate"
+    entity = mock_orion.upsert_entities_batch.call_args.args[0][0]
+    assert entity["type"] == "AgriSoilSample"
+    assert entity["potassiumExchangeable"]["value"] == 240.0
+    assert entity["potassiumMethod"]["value"] == "ammoniumAcetate"  # SDM enum (camelCase)
     assert entity["hasAgriParcel"]["object"] == "urn:ngsi-ld:AgriParcel:parcel-1"
