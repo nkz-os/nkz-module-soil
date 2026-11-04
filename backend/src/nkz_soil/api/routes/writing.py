@@ -11,9 +11,9 @@ from pydantic import BaseModel
 
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.config import BATCH_MAX_BYTES, BATCH_MAX_ROWS, CONTEXT_URL
+from nkz_soil.models.agri_soil_sample import to_entity
 from nkz_soil.models.fertility import (
     FERTILITY_FIELDS,
-    fertility_horizon_entries,
     has_fertility_values,
     validate_fertility,
     validate_sampling_date,
@@ -103,6 +103,23 @@ class SamplingPointInput(BaseModel):
     laboratory_reference: str | None = None
     sampling_date: str | None = None
     operator: str | None = None
+    zone_id: str | None = None
+    number_of_subsamples: int | None = None
+
+
+_ZONE_URN_PREFIX = "urn:ngsi-ld:AgriManagementZone:"
+
+
+def _validate_sample_extras(values: dict) -> list[str]:
+    """Optional zone link and number of pooled subsamples of a soil sample."""
+    errors = []
+    zone = values.get("zone_id")
+    if zone is not None and (not isinstance(zone, str) or not zone.startswith(_ZONE_URN_PREFIX)):
+        errors.append(f"zoneId must be a {_ZONE_URN_PREFIX}... URN")
+    n = values.get("number_of_subsamples")
+    if n is not None and (isinstance(n, bool) or not isinstance(n, int) or n < 1):
+        errors.append("numberOfSubsamples must be a whole number >= 1")
+    return errors
 
 
 class SurveyInput(BaseModel):
@@ -135,13 +152,17 @@ async def create_sampling_point(
     values = body.model_dump()
     errors = validate_fertility(values) + validate_sampling_date(
         values.get("sampling_date"), required=has_fertility_values(values),
-    )
+    ) + _validate_sample_extras(values)
     if errors:
         raise HTTPException(status_code=422, detail="; ".join(errors))
 
-    entity_id, entity = _sampling_point_entity(body.model_dump())
+    # AgriSoilSample with a deterministic id: posting the same sample twice updates it.
+    entity = to_entity(tenant_id, values)
+    entity_id = entity["id"]
     async with OrionClient(tenant_id) as orion:
-        await orion.create_entity(entity)
+        result = await orion.upsert_entities_batch([entity])
+    if result.get("errors"):
+        raise HTTPException(status_code=502, detail="Soil sample could not be stored")
 
     # A new point can change the per-zone soil of its parcel (or, unlinked, any).
     await invalidate_parcel(tenant_id, body.parcel_id)
@@ -251,7 +272,7 @@ _CSV_COLUMNS = [
     "cec", "bulkDensity", "coarseFragments", "penetrationResistance",
     "labReference", "samplingDate", "operator",
     *(key for key, _lo, _hi in FERTILITY_FIELDS.values()),
-    "phosphorusMethod", "potassiumMethod", "parcelId",
+    "phosphorusMethod", "potassiumMethod", "parcelId", "zoneId", "numberOfSubsamples",
 ]
 
 # Aliases for common variations
@@ -265,6 +286,7 @@ _CSV_ALIASES = {
     "phosphorus_available": "phosphorusAvailable", "phosphorus_method": "phosphorusMethod",
     "potassium_exchangeable": "potassiumExchangeable", "potassium_method": "potassiumMethod",
     "active_lime": "activeLime", "parcel_id": "parcelId",
+    "zone_id": "zoneId", "number_of_subsamples": "numberOfSubsamples",
 }
 
 
@@ -359,6 +381,14 @@ def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
     errors.extend(validate_sampling_date(
         row.get("samplingDate", "").strip() or None, required=has_fertility_values(fertility),
     ))
+    extras: dict = {"zone_id": row.get("zoneId", "").strip() or None}
+    raw_n = row.get("numberOfSubsamples", "").strip()
+    if raw_n:
+        try:
+            extras["number_of_subsamples"] = int(raw_n)
+        except ValueError:
+            extras["number_of_subsamples"] = raw_n  # reported by _validate_sample_extras
+    errors.extend(_validate_sample_extras(extras))
 
     if errors:
         return None, f"Row {row_num}: {'; '.join(errors)}"
@@ -388,49 +418,9 @@ def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
     cleaned["operator"] = row.get("operator", "") or None
     cleaned.update(fertility)
     cleaned["parcel_id"] = row.get("parcelId", "").strip() or None
+    cleaned.update(extras)
 
     return cleaned, None
-
-
-_HORIZON_BASE = (
-    ("sand", "sand"), ("silt", "silt"), ("clay", "clay"),
-    ("organicCarbon", "organic_carbon"), ("bulkDensity", "bulk_density"), ("ph", "ph"),
-    ("cec", "cec"), ("coarseFragments", "coarse_fragments"),
-    ("penetrationResistance", "penetration_resistance"),
-)
-_OPTIONAL_ATTRS = (
-    ("samplingDate", "sampling_date"), ("laboratoryReference", "laboratory_reference"),
-    ("operator", "operator"),
-)
-
-
-def _sampling_point_entity(cleaned: dict) -> tuple[str, dict]:
-    """SoilSamplingPoint for one sampled depth. NGSI-LD has no null attribute value,
-    so absent optionals are omitted, both as attributes and inside the horizon."""
-    entity_id = f"urn:ngsi-ld:SoilSamplingPoint:{uuid.uuid4()}"
-    horizon: dict = {"depthFrom": cleaned["depth_from"], "depthTo": cleaned["depth_to"]}
-    for key, name in _HORIZON_BASE:
-        if cleaned.get(name) is not None:
-            horizon[key] = cleaned[name]
-    horizon.update(fertility_horizon_entries(cleaned))
-    entity = {
-        "id": entity_id,
-        "type": "SoilSamplingPoint",
-        "@context": [CONTEXT_URL],
-        "location": {
-            "type": "GeoProperty",
-            "value": {"type": "Point", "coordinates": [cleaned["lon"], cleaned["lat"]]},
-        },
-        "horizons": {"type": "Property", "value": [horizon]},
-    }
-    for attr, name in _OPTIONAL_ATTRS:
-        if cleaned.get(name):
-            entity[attr] = {"type": "Property", "value": cleaned[name]}
-    if cleaned.get("parcel_id"):
-        entity["hasAgriParcel"] = {
-            "type": "Relationship", "object": _parcel_urn(cleaned["parcel_id"]),
-        }
-    return entity_id, entity
 
 
 @router.post("/sampling-points/batch")
@@ -489,12 +479,13 @@ async def create_sampling_points_batch(
     row_by_entity_id: dict[str, int] = {}
     entities: list[dict] = []
     for row_num, cleaned in rows_to_create:
-        entity_id, entity = _sampling_point_entity(cleaned)
-        row_by_entity_id[entity_id] = row_num
+        entity = to_entity(tenant_id, cleaned)
+        row_by_entity_id[entity["id"]] = row_num
         entities.append(entity)
 
+    # Deterministic ids + upsert: re-importing the same CSV updates, never duplicates.
     async with OrionClient(tenant_id) as orion:
-        batch_result = await orion.create_entities_batch(entities)
+        batch_result = await orion.upsert_entities_batch(entities)
 
     if entities:
         parcels = {c.get("parcel_id") for _, c in rows_to_create}
@@ -508,7 +499,7 @@ async def create_sampling_points_batch(
     ]
     for err in batch_result.get("errors", []):
         if isinstance(err, dict):
-            eid = err.get("id", "")
+            eid = err.get("id") or err.get("entityId", "")
             if eid in row_by_entity_id:
                 errors.append({
                     "row": row_by_entity_id[eid],

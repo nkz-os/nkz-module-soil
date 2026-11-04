@@ -26,6 +26,10 @@ def orion():
         return {"created": len(entities), "errors": [], "entity_ids": [e["id"] for e in entities]}
 
     m.create_entities_batch = AsyncMock(side_effect=_batch)
+
+    async def _upsert(entities):
+        return {"upserted": len(entities), "errors": [], "entity_ids": [e["id"] for e in entities]}
+    m.upsert_entities_batch = AsyncMock(side_effect=_upsert)
     with patch("nkz_soil.api.routes.writing.OrionClient", return_value=m):
         yield m
 

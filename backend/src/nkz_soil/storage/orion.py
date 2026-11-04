@@ -182,6 +182,19 @@ class OrionClient:
             "entity_ids": created_ids,
         }
 
+    async def upsert_entities_batch(
+        self, entities: list[dict[str, Any]], *, chunk_size: int = 50,
+    ) -> dict[str, Any]:
+        """Create-or-update in chunks (entityOperations/upsert): re-sending the same
+        deterministic ids updates them instead of duplicating."""
+        upserted, errors, ids = 0, [], []
+        for i in range(0, len(entities), chunk_size):
+            result = await self._sdk.upsert_entities_batch(entities[i : i + chunk_size])
+            upserted += result.get("upserted", 0)
+            errors.extend(result.get("errors", []))
+            ids.extend(result.get("entity_ids", []))
+        return {"upserted": upserted, "errors": errors, "entity_ids": ids}
+
     async def patch_entity(self, entity_id: str, attrs: dict[str, Any]) -> None:
         await self._sdk.update_entity_attrs(entity_id, attrs)
 
