@@ -104,6 +104,17 @@ class OrionClient:
             limit=limit,
         )
 
+    async def query_all(self, type: str, q: str | None = None, page: int = 1000) -> list[dict[str, Any]]:
+        """Every entity of a type matching ``q`` (pages through the broker's limit)."""
+        out: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            batch = await self._sdk.query_entities(type=type, q=q, limit=page, offset=offset)
+            out.extend(batch)
+            if len(batch) < page:
+                return out
+            offset += page
+
     async def create_entity(self, entity: dict[str, Any]) -> dict[str, Any]:
         return await self._sdk.create_entity(entity)
 

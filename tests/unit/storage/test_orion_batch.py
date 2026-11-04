@@ -64,3 +64,20 @@ async def test_upsert_entities_batch_chunks_and_collects_errors():
     assert route.calls[0].request.url.params["options"] == "update"
     assert result["upserted"] == 3 and len(result["errors"]) == 1
     assert result["entity_ids"] == [e["id"] for e in ents[:3]]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_query_all_pages_through_the_broker_limit():
+    calls = []
+
+    def _reply(request):
+        off = int(request.url.params["offset"])
+        calls.append(off)
+        n = 1000 if off == 0 else 3
+        return Response(200, json=[{"id": f"urn:ngsi-ld:AgriPlant:t:{off + i}"} for i in range(n)])
+
+    respx.get("http://localhost:1026/ngsi-ld/v1/entities").mock(side_effect=_reply)
+    async with OrionClient("tenant1") as orion:
+        out = await orion.query_all("AgriPlant", q='hasAgriParcel=="urn:ngsi-ld:AgriParcel:p"')
+    assert calls == [0, 1000] and len(out) == 1003

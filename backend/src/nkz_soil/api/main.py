@@ -9,6 +9,7 @@ from nkz_soil.api.limiter import limiter
 from nkz_soil.api.routes.capabilities import router as capabilities_router
 from nkz_soil.api.routes.layers import router as layers_router
 from nkz_soil.api.routes.metrics import router as metrics_router
+from nkz_soil.api.routes.plant_samples import router as plant_samples_router
 from nkz_soil.api.routes.providers import router as providers_router
 from nkz_soil.api.routes.providers import set_registry
 from nkz_soil.api.routes.reading import router as reading_router
@@ -78,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(capabilities_router)
     app.include_router(reading_router, prefix="/v1/soil")
     app.include_router(writing_router, prefix="/v1/soil")
+    app.include_router(plant_samples_router, prefix="/v1/soil")
     app.include_router(zonal_router, prefix="/v1/soil")
     app.include_router(layers_router, prefix="/v1/soil")
     app.include_router(providers_router, prefix="/v1/soil")
