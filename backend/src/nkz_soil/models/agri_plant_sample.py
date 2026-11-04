@@ -36,6 +36,7 @@ _ALIAS = {alias: attr for attr, (_k, aliases) in _RESULTS.items() for alias in a
 # accepted units -> factor to mg/kg
 _UNIT_TO_MGKG = {"%": 10_000.0, "g/kg": 1_000.0, "mg/kg": 1.0, "ppm": 1.0}
 _UNIT_CODE = {"%": "P1", "g/kg": "GK", "mg/kg": "NA", "ppm": "NA"}
+_CODE_UNIT = {"P1": "%", "GK": "g/kg", "NA": "mg/kg"}
 _HEADER = re.compile(r"^\s*(.+?)\s*\(\s*([^)]+?)\s*\)\s*$")
 _LAB_UNIT = {"fraction": "%", "mgkg": "mg/kg"}
 
@@ -75,6 +76,12 @@ def unit_code(unit: str) -> str:
     if u not in _UNIT_CODE:
         raise UnitError(f"unknown unit: {unit}")
     return _UNIT_CODE[u]
+
+
+def check_unit(unit: str, column: str) -> None:
+    """Raise UnitError naming the column when its unit is not one this import stores."""
+    if _norm_unit(unit) not in _UNIT_CODE:
+        raise UnitError(f"unknown unit in column {column}: {unit}")
 
 
 def sample_id(tenant: str, parcel_urn: str, codes: list[str], day: str, tissue: str, code: str) -> str:
@@ -143,7 +150,11 @@ def to_rows(entity: dict) -> dict:
         "sampleCode": _value(entity, "sampleCode"),
         "phenologicalStage": _value(entity, "phenologicalStage"),
         "numberOfSubsamples": _value(entity, "numberOfSubsamples"),
+        "laboratory": _value(entity, "laboratory"),
+        "analysisMethod": _value(entity, "analysisMethod"),
     }
+    analysed = _value(entity, "dateAnalysed")
+    row["dateAnalysed"] = analysed[:10] if isinstance(analysed, str) else None
     for attr, (kind, _a) in _RESULTS.items():
         v = _value(entity, attr)
         header = f"{attr} ({_LAB_UNIT[kind]})"
@@ -151,7 +162,15 @@ def to_rows(entity: dict) -> dict:
             row[header] = _round(v * 100 if kind == "fraction" else v)
         else:
             row[header] = None
+    for other in _value(entity, "otherResults") or []:
+        if isinstance(other, dict) and other.get("name"):
+            unit = _CODE_UNIT.get(str(other.get("unitCode")), str(other.get("unitCode") or ""))
+            row[f"{other['name']} ({unit})"] = other.get("value")
     return row
 
 
 RESULT_HEADERS = tuple(f"{a} ({_LAB_UNIT[k]})" for a, (k, _x) in _RESULTS.items())
+
+# Attributes an import writes from the sheet: a re-import that leaves one empty removes it.
+MANAGED_ATTRS = (*_RESULTS, "otherResults", "phenologicalStage", "laboratory", "analysisMethod",
+                 "numberOfSubsamples", "dateAnalysed")

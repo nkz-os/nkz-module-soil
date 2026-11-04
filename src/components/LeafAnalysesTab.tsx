@@ -14,6 +14,14 @@ function parcelName(p: ParcelEntity): string {
   return typeof name === 'string' ? name : name?.value || p.id.split(':').pop() || p.id;
 }
 
+/** Export value meaning "no zone column"; an absent value means the default zoning. */
+const NO_ZONING = 'none';
+const WARNING_KEYS: Record<string, string> = {
+  ignored_column: 'leaf.ignoredColumn',
+  stored_as_other: 'leaf.storedAsOther',
+  stale_not_removed: 'leaf.staleNotRemoved',
+};
+
 /** Leaf (plant tissue) lab analyses: CSV import with a preview, and a per-zone CSV export. */
 export function LeafAnalysesTab() {
   const { t } = useTranslation('soil');
@@ -26,17 +34,17 @@ export function LeafAnalysesTab() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [zonings, setZonings] = useState<ZoningSummary[]>([]);
-  const [zoning, setZoning] = useState('');
+  const [zoning, setZoning] = useState(NO_ZONING);
 
   useEffect(() => {
-    setZonings([]); setZoning(''); setPreview(null); setFile(null); setWritten(null); setError(null);
+    setZonings([]); setZoning(NO_ZONING); setPreview(null); setFile(null); setWritten(null); setError(null);
     if (!parcelId) return;
     let cancelled = false;
     api.listZonings(parcelId)
       .then((zs) => {
         if (cancelled) return;
         setZonings(zs);
-        setZoning(zs.find((z) => z.is_default)?.run_id ?? '');
+        setZoning(zs.find((z) => z.is_default)?.run_id ?? NO_ZONING);
       })
       .catch(() => { if (!cancelled) setZonings([]); });
     return () => { cancelled = true; };
@@ -72,7 +80,7 @@ export function LeafAnalysesTab() {
   const doExport = async () => {
     setError(null);
     try {
-      const blob = await api.exportLeafCsv(parcelId, zoning || undefined);
+      const blob = await api.exportLeafCsv(parcelId, zoning);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -83,6 +91,8 @@ export function LeafAnalysesTab() {
       setError(t('leaf.exportFailed'));
     }
   };
+
+  const updates = preview ? preview.accepted.filter((a) => a.action === 'update').length : 0;
 
   return (
     <div className="bg-nkz-surface rounded-nkz-md p-6 space-y-4">
@@ -120,9 +130,10 @@ export function LeafAnalysesTab() {
                   {preview.rejected.map((r) => <li key={`${r.row}-${r.error}`}>{r.error}</li>)}
                 </ul>
               )}
+              {updates > 0 && <p className="text-nkz-sm text-nkz-muted">{t('leaf.updates', { count: updates })}</p>}
               {preview.warnings.length > 0 && (
                 <ul className="text-nkz-xs text-nkz-muted">
-                  {preview.warnings.map((w) => <li key={w.column}>{t('leaf.ignoredColumn', { column: w.column })}</li>)}
+                  {preview.warnings.map((w, i) => <li key={`${w.code}-${w.column}-${i}`}>{t(WARNING_KEYS[w.code] ?? 'leaf.ignoredColumn', { column: w.column })}</li>)}
                 </ul>
               )}
               {written === null && (
@@ -139,7 +150,7 @@ export function LeafAnalysesTab() {
               <span className="text-nkz-sm text-nkz-muted">{t('leaf.zoning')}</span>
               <select aria-label={t('leaf.zoning')} value={zoning} onChange={(e) => setZoning(e.target.value)}
                 className="w-full mt-1 rounded-nkz-sm border border-nkz-border bg-nkz-surface px-3 py-2 text-nkz-sm">
-                <option value="">{t('leaf.noZoning')}</option>
+                <option value={NO_ZONING}>{t('leaf.noZoning')}</option>
                 {zonings.map((z) => (
                   <option key={z.run_id} value={z.run_id}>
                     {t('leaf.zoningOption', { method: z.method ?? '', date: (z.date ?? '').slice(0, 10), count: z.zone_count })}

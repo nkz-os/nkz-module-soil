@@ -70,4 +70,28 @@ describe('LeafAnalysesTab', () => {
     fireEvent.click(screen.getByText('leaf.export'));
     await waitFor(() => expect(api.exportLeafCsv).toHaveBeenCalledWith('urn:ngsi-ld:AgriParcel:demo-parcel-001', 'manual-abc'));
   });
+
+  it('"no zones" really exports without zones, also when zonings cannot be listed', async () => {
+    api.listZonings.mockRejectedValue(new Error('down'));
+    render(<LeafAnalysesTab />);
+    choose();
+    const zoning = (await screen.findByLabelText('leaf.zoning')) as HTMLSelectElement;
+    expect(zoning.value).toBe('none');
+    fireEvent.click(screen.getByText('leaf.export'));
+    await waitFor(() => expect(api.exportLeafCsv).toHaveBeenCalledWith('urn:ngsi-ld:AgriParcel:demo-parcel-001', 'none'));
+  });
+
+  it('shows each warning by its kind and how many samples will be overwritten', async () => {
+    api.previewLeafCsv.mockResolvedValue({
+      ...PREVIEW,
+      accepted: [{ ...PREVIEW.accepted[0], action: 'update' }],
+      warnings: [{ code: 'ignored_column', column: 'Notes' }, { code: 'stored_as_other', column: 'N total (%)' }],
+    });
+    render(<LeafAnalysesTab />);
+    choose();
+    fireEvent.change(screen.getByLabelText('leaf.file'), { target: { files: [new File(['x'], 'leaf.csv')] } });
+    expect(await screen.findByText('leaf.storedAsOther {"column":"N total (%)"}')).toBeTruthy();
+    expect(screen.getByText('leaf.ignoredColumn {"column":"Notes"}')).toBeTruthy();
+    expect(screen.getByText('leaf.updates {"count":1}')).toBeTruthy();
+  });
 });

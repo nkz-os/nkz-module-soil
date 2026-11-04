@@ -46,9 +46,9 @@ export interface SoilSummary {
 const SOIL_API_BASE = `${API_ORIGIN}/api/soil`;
 
 export interface LeafImportResult {
-  accepted: Array<{ row: number; id: string; plantCodes: string[]; dateSampled: string }>;
+  accepted: Array<{ row: number; id: string; plantCodes: string[]; dateSampled: string; action?: 'create' | 'update' }>;
   rejected: Array<{ row: number; error: string }>;
-  warnings: Array<{ code: string; column: string }>;
+  warnings: Array<{ code: string; column: string; row?: number }>;
   created: number;
 }
 
