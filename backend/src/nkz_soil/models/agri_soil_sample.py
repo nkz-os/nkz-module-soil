@@ -20,6 +20,14 @@ from datetime import UTC, datetime
 from nkz_soil.config import CONTEXT_URL
 
 ENTITY_TYPE = "AgriSoilSample"
+# Readers query both: new analyses are AgriSoilSample, older ones stay SoilSamplingPoint
+# until their migration (phase 2). Orion-LD reads a comma list as "any of".
+SOIL_SAMPLE_TYPES = f"SoilSamplingPoint,{ENTITY_TYPE}"
+
+
+def is_agri_soil_sample(entity: dict) -> bool:
+    t = entity.get("type") if isinstance(entity, dict) else None
+    return isinstance(t, str) and t.rsplit("/", 1)[-1].rsplit(":", 1)[-1] == ENTITY_TYPE
 _DIGITS = 9  # rounding after unit conversion: 45 % -> 0.45 -> 45, never 45.00000000000001
 
 # input (snake_case) -> (API horizon key, SDM attribute, SDM value = API value * factor)
@@ -158,6 +166,14 @@ def to_horizon(entity: dict) -> dict:
 def _date(entity: dict) -> str | None:
     v = _value(entity, "dateSampled")
     return v[:10] if isinstance(v, str) and len(v) >= 10 else None
+
+
+def sampling_day(entity: dict) -> str | None:
+    """YYYY-MM-DD of a soil sample of either type (samplingDate or dateSampled)."""
+    v = _value(entity, "samplingDate")
+    if isinstance(v, str) and len(v) >= 10:
+        return v[:10]
+    return _date(entity)
 
 
 def _point(entity: dict) -> tuple[float, float] | None:

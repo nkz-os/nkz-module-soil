@@ -23,6 +23,7 @@ import redis.asyncio as aioredis
 from shapely.geometry import shape
 
 from nkz_soil.config import REDIS_URL
+from nkz_soil.models.agri_soil_sample import SOIL_SAMPLE_TYPES
 from nkz_soil.providers.idena import TEXTURE_CLASS_FRACTIONS, IdenaProvider
 from nkz_soil.providers.lucas import LucasProvider
 from nkz_soil.storage.minio import get_minio_client
@@ -119,7 +120,7 @@ async def invalidate_parcel(tenant: str, parcel_id: str | None, client=None) -> 
 
 async def _sampling_points_in_zone(tenant: str, geometry: dict) -> list[dict]:
     async with OrionClient(tenant) as orion:
-        points = await orion.query_entities(type="SoilSamplingPoint", geometry=geometry)
+        points = await orion.query_entities(type=SOIL_SAMPLE_TYPES, geometry=geometry)
     zone = shape(geometry)
     inside = []
     for p in points:

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from nkz_soil.models.agri_soil_sample import SOIL_SAMPLE_TYPES
 from nkz_soil.models.domain import (
     DepthInterval,
     GeographicScope,
@@ -30,7 +31,7 @@ class LabAnalysisProvider:
     ) -> SoilDataResult:
         async with OrionClient(current_tenant()) as orion:
             points = await orion.query_entities(
-                type="SoilSamplingPoint",
+                type=SOIL_SAMPLE_TYPES,
                 geometry=geometry,
             )
 

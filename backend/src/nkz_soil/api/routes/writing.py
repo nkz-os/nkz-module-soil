@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from nkz_soil.api.dependencies import get_redis_pool, require_auth
 from nkz_soil.config import BATCH_MAX_BYTES, BATCH_MAX_ROWS, CONTEXT_URL
-from nkz_soil.models.agri_soil_sample import to_entity
+from nkz_soil.models.agri_soil_sample import SOIL_SAMPLE_TYPES, to_entity
 from nkz_soil.models.fertility import (
     FERTILITY_FIELDS,
     has_fertility_values,
@@ -542,7 +542,7 @@ async def rasterize_parcel_property(
 
     async with OrionClient(tenant_id) as orion:
         matching = await orion.query_entities(
-            type="SoilSamplingPoint",
+            type=SOIL_SAMPLE_TYPES,
             q=parcel_ref_query(parcel_id),
         )
 
