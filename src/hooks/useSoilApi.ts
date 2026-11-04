@@ -45,6 +45,25 @@ export interface SoilSummary {
 
 const SOIL_API_BASE = `${API_ORIGIN}/api/soil`;
 
+export interface LeafImportResult {
+  accepted: Array<{ row: number; id: string; plantCodes: string[]; dateSampled: string; action?: 'create' | 'update' }>;
+  rejected: Array<{ row: number; error: string }>;
+  warnings: Array<{ code: string; column: string; row?: number }>;
+  created: number;
+}
+
+/** A zoning of the parcel (gis-routing): automatic (NDVI…) or manual treatment zones. */
+export interface ZoningSummary {
+  run_id: string; method: string | null; date: string | null; zone_count: number;
+  labels: (string | null)[]; is_default: boolean;
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const r = await fetch(url, { credentials: 'include' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json() as Promise<T>;
+}
+
 type ApiClient = { get: <T = unknown>(path: string) => Promise<T>; post: <T = unknown>(path: string, body?: unknown) => Promise<T> };
 
 /** Pure builder — kept separate from the hook so it is unit-testable without a React render. */
@@ -72,6 +91,27 @@ export function buildSoilApi(api: ApiClient) {
 
     uploadCsv: (formData: FormData) =>
       api.post('/sampling-points/batch', formData),
+
+    previewLeafCsv: (parcelId: string, formData: FormData) =>
+      api.post<LeafImportResult>(
+        `/plant-samples/batch?parcel_id=${encodeURIComponent(parcelId)}&dry_run=true`, formData),
+
+    importLeafCsv: (parcelId: string, formData: FormData) =>
+      api.post<LeafImportResult>(
+        `/plant-samples/batch?parcel_id=${encodeURIComponent(parcelId)}&dry_run=false`, formData),
+
+    // Zonings live in gis-routing; read them through the platform API origin.
+    listZonings: (parcelId: string) =>
+      getJson<{ zonings: ZoningSummary[] }>(
+        `${API_ORIGIN}/api/routing/zonings/${encodeURIComponent(parcelId)}`).then((r) => r.zonings ?? []),
+
+    exportLeafCsv: async (parcelId: string, zoningRunId?: string) => {
+      const q = zoningRunId ? `?zoning_run_id=${encodeURIComponent(zoningRunId)}` : '';
+      const r = await fetch(`${SOIL_API_BASE}/parcel/${parcelApiPath(parcelId)}/plant-samples/export.csv${q}`,
+        { credentials: 'include' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.blob();
+    },
 
     // Routes through entity-manager's activation gate (records real
     // quota usage) instead of calling soil's own /ingest endpoint

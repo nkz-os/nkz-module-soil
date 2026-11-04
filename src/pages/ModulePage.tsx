@@ -7,14 +7,15 @@ import { useEntities } from '@nekazari/module-kit';
 import { ngsiValue, sampleDate, soilHorizons } from '../lib/ngsiValue';
 import { sanitizeHorizons, sanitizeCompaction, isSoilgridsNodata } from '../lib/sanitizeHorizon';
 import { SoilProfileCard } from '../components/SoilProfileCard';
+import { LeafAnalysesTab } from '../components/LeafAnalysesTab';
 import { Select } from '@nekazari/ui-kit';
 import {
   apiErrorDetail, buildSamplingPayload, fromSelect, labErrors, NONE, P_METHODS, K_METHODS,
 } from '../lib/samplingPayload';
 
-type Tab = 'dashboard' | 'manual' | 'csv' | 'history';
+type Tab = 'dashboard' | 'manual' | 'csv' | 'leaf' | 'history';
 
-const TABS: readonly Tab[] = ['dashboard', 'manual', 'csv', 'history'];
+const TABS: readonly Tab[] = ['dashboard', 'manual', 'csv', 'leaf', 'history'];
 
 // Tab selected by the URL: an explicit ?tab= wins (deep link from other modules to the
 // manual analysis form), else ?parcel opens the dashboard, else the default.
@@ -149,6 +150,7 @@ export default function ModulePage() {
     { id: 'dashboard', label: t('tabs.dashboard') },
     { id: 'manual', label: t('tabs.manual') },
     { id: 'csv', label: t('tabs.csv') },
+    { id: 'leaf', label: t('tabs.leaf') },
     { id: 'history', label: t('tabs.history') },
   ];
 
@@ -177,6 +179,7 @@ export default function ModulePage() {
         {activeTab === 'dashboard' && <DashboardTab />}
         {activeTab === 'manual' && <ManualSamplingTab />}
         {activeTab === 'csv' && <CsvUploadTab />}
+        {activeTab === 'leaf' && <LeafAnalysesTab />}
         {activeTab === 'history' && <HistoryTab />}
       </div>
     </SlotShellCompact>
