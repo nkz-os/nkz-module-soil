@@ -115,3 +115,46 @@ def test_batch_reports_broker_errors_per_row(client, orion):
                        files={"file": ("lab.csv", LAB_CSV, "text/csv")}, headers=HEADERS).json()
     assert data["created"] == 1 and data["errors"] == 1
     assert data["errorDetails"][0]["row"] == 3
+
+
+# ---- final review fixes ----------------------------------------------------------
+
+def test_two_posts_of_the_same_reading_keep_both(client, orion):
+    """Interactive entry (penetrometer at one spot, no date) must never overwrite a reading."""
+    body = {"lat": 42.8, "lon": -1.6, "depth_from": 0, "depth_to": 10, "penetration_resistance": 2.0}
+    a = client.post("/v1/soil/sampling-points", json=body, headers=HEADERS).json()["id"]
+    b = client.post("/v1/soil/sampling-points", json=body, headers=HEADERS).json()["id"]
+    assert a != b
+
+
+def test_duplicate_rows_in_one_csv_are_reported_not_merged(client, orion):
+    csv = ("lat,lon,depthFrom,depthTo,ph,samplingDate\n"
+           "42.8,-1.6,0,30,7.0,2026-09-01\n"
+           "42.8,-1.6,0,30,7.2,2026-09-01\n")
+    data = client.post("/v1/soil/sampling-points/batch",
+                       files={"file": ("d.csv", csv, "text/csv")}, headers=HEADERS).json()
+    assert data["created"] == 1 and data["errors"] == 1
+    assert data["errorDetails"][0]["row"] == 3 and "duplicate of row 2" in data["errorDetails"][0]["error"]
+    assert len(_written(orion)) == 1
+
+
+def test_csv_date_with_spaces_is_stored_clean(client, orion):
+    csv = "lat,lon,depthFrom,depthTo,ph,samplingDate\n42.8,-1.6,0,30,7.0, 2026-03-01 \n"
+    data = client.post("/v1/soil/sampling-points/batch",
+                       files={"file": ("s.csv", csv, "text/csv")}, headers=HEADERS).json()
+    assert data["created"] == 1
+    (e,) = _written(orion)
+    assert e["dateSampled"]["value"]["@value"] == "2026-03-01T12:00:00Z"
+
+
+def test_broker_error_on_post_is_logged(client, orion, caplog):
+    import logging
+
+    async def _fail(entities):
+        return {"upserted": 0, "entity_ids": [], "errors": [{"entityId": entities[0]["id"], "error": "x"}]}
+    orion.upsert_entities_batch.side_effect = _fail
+    with caplog.at_level(logging.ERROR):
+        r = client.post("/v1/soil/sampling-points", json={
+            "lat": 42.8, "lon": -1.6, "depth_from": 0, "depth_to": 30, "ph": 7.0}, headers=HEADERS)
+    assert r.status_code == 502
+    assert any("tenant1" in rec.getMessage() for rec in caplog.records)

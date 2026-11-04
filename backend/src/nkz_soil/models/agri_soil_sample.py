@@ -74,17 +74,25 @@ def _snake(camel: str) -> str:
     return re.sub(r"(?<!^)([A-Z])", r"_\1", camel).lower()
 
 
+def _day(sampling_date: str | None) -> str:
+    """Sampling day; an undated sample is stored with the entry day (SDM requires a date)."""
+    day = (sampling_date or "").strip()
+    return day or datetime.now(UTC).date().isoformat()
+
+
 def _noon(sampling_date: str | None) -> str:
-    day = sampling_date or datetime.now(UTC).date().isoformat()
-    return f"{day}T12:00:00Z"
+    return f"{_day(sampling_date)}T12:00:00Z"
 
 
 def sample_id(tenant: str, cleaned: dict) -> str:
-    """Deterministic id: re-importing the same row updates the same entity."""
+    """Deterministic id for imports: re-importing the same row updates the same entity.
+    Keyed on the stored day (an undated survey next year never overwrites this one) and
+    on the parcel URN (short id and URN name the same parcel)."""
+    parcel = cleaned.get("parcel_id")
     key = "|".join([
-        cleaned.get("parcel_id") or "",
+        _parcel_urn(parcel) if parcel else "",
         f"{float(cleaned['lat']):.6f}", f"{float(cleaned['lon']):.6f}",
-        cleaned.get("sampling_date") or "",
+        _day(cleaned.get("sampling_date")),
         str(cleaned["depth_from"]), str(cleaned["depth_to"]),
         cleaned.get("laboratory_reference") or "",
     ])
@@ -95,15 +103,16 @@ def _parcel_urn(parcel_id: str) -> str:
     return parcel_id if parcel_id.startswith("urn:") else f"urn:ngsi-ld:AgriParcel:{parcel_id}"
 
 
-def to_entity(tenant: str, cleaned: dict) -> dict:
-    """Normalized NGSI-LD AgriSoilSample for one sampled depth; absent values are omitted."""
+def to_entity(tenant: str, cleaned: dict, entity_id: str | None = None) -> dict:
+    """Normalized NGSI-LD AgriSoilSample for one sampled depth; absent values are omitted.
+    ``entity_id`` overrides the deterministic id (interactive entry keeps every reading)."""
     observed = _noon(cleaned.get("sampling_date"))
 
     def result(value):
         return {"type": "Property", "value": value, "observedAt": observed}
 
     entity: dict = {
-        "id": sample_id(tenant, cleaned),
+        "id": entity_id or sample_id(tenant, cleaned),
         "type": ENTITY_TYPE,
         "@context": [CONTEXT_URL],
         "location": {"type": "GeoProperty",

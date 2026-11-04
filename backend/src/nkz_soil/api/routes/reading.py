@@ -298,7 +298,10 @@ async def parcel_lab_analyses(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH)
         if how == "geometry" and linked_to and linked_to != parcel_urn:
             continue  # inside the polygon but declared for another parcel
         if is_agri_soil_sample(entity):
-            samples[how].append(entity)  # one entity per depth: regrouped below
+            # One entity per depth, regrouped below. Penetrometer-only depths are not lab
+            # analyses and must not join a lab core (FaST would lose its topsoil values).
+            if any(k not in _NON_LAB_KEYS for h in horizons_of(entity) for k in h):
+                samples[how].append(entity)
             continue
         entry = _lab_entry(entity, how)
         if entry:

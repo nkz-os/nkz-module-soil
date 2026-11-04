@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Literal
@@ -60,6 +61,7 @@ def _sampling_value(entity: dict, property: str, depth_from: int, depth_to: int)
     return None
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 _REQUIRE_AUTH = require_auth()
 _FILE_UPLOAD = File(...)
@@ -156,12 +158,15 @@ async def create_sampling_point(
     if errors:
         raise HTTPException(status_code=422, detail="; ".join(errors))
 
-    # AgriSoilSample with a deterministic id: posting the same sample twice updates it.
-    entity = to_entity(tenant_id, values)
-    entity_id = entity["id"]
+    # Interactive entry: a fresh id per reading (several penetrometer readings at one spot
+    # are all kept). Only CSV imports use the deterministic id, to make re-imports updates.
+    entity_id = f"urn:ngsi-ld:AgriSoilSample:{tenant_id}:{uuid.uuid4().hex[:16]}"
+    entity = to_entity(tenant_id, values, entity_id=entity_id)
     async with OrionClient(tenant_id) as orion:
         result = await orion.upsert_entities_batch([entity])
     if result.get("errors"):
+        logger.error("soil sample not stored: tenant=%s id=%s errors=%s",
+                     tenant_id, entity_id, result["errors"])
         raise HTTPException(status_code=502, detail="Soil sample could not be stored")
 
     # A new point can change the per-zone soil of its parcel (or, unlinked, any).
@@ -414,7 +419,7 @@ def _validate_row(row: dict, row_num: int) -> tuple[dict | None, str | None]:
                 pass
 
     cleaned["laboratory_reference"] = row.get("labReference", "") or None
-    cleaned["sampling_date"] = row.get("samplingDate", "") or None
+    cleaned["sampling_date"] = row.get("samplingDate", "").strip() or None
     cleaned["operator"] = row.get("operator", "") or None
     cleaned.update(fertility)
     cleaned["parcel_id"] = row.get("parcelId", "").strip() or None
@@ -480,6 +485,11 @@ async def create_sampling_points_batch(
     entities: list[dict] = []
     for row_num, cleaned in rows_to_create:
         entity = to_entity(tenant_id, cleaned)
+        first = row_by_entity_id.get(entity["id"])
+        if first is not None:
+            # Same parcel, point, day, depth and lab reference as an earlier row.
+            errors.append({"row": row_num, "error": f"Row {row_num}: duplicate of row {first}"})
+            continue
         row_by_entity_id[entity["id"]] = row_num
         entities.append(entity)
 

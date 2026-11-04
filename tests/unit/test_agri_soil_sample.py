@@ -145,3 +145,15 @@ def test_camel_methods_match_the_sdm_enums():
     sdm_k = {"ammoniumAcetate", "mehlich3", "ammoniumLactate", "calciumAmmoniumLactate"}
     assert {_camel(m) for m in P_METHODS} == sdm_p
     assert {_camel(m) for m in K_METHODS} == sdm_k
+
+
+def test_undated_id_uses_the_stored_day():
+    """An undated row is stored with the entry day: its id is keyed on that day, so next
+    year's undated survey of the same grid never overwrites this year's."""
+    from datetime import UTC, datetime
+    today = datetime.now(UTC).date().isoformat()
+    assert sample_id("tenant-a", _row(sampling_date=None)) == sample_id("tenant-a", _row(sampling_date=today))
+
+
+def test_parcel_id_form_does_not_change_the_id():
+    assert sample_id("tenant-a", _row(parcel_id="demo-parcel-001")) == sample_id("tenant-a", _row(parcel_id=PARCEL))

@@ -163,3 +163,18 @@ def test_rasterize_reads_both_types(client):
     assert r.status_code == 200, r.text
     assert _types(seen[0]) == BOTH
     assert [p["value"] for p in fake.call_args.kwargs["sample_points"]] == [1.0, 2.0, 3.0]  # MPa
+
+
+def test_penetrometer_depths_never_join_a_lab_analysis(client, reading_orion):
+    """Same point and day, no sample codes: lab 0-30 and penetrometer 0-10/10-20 stay apart,
+    or FaST's topsoil mean would lose the lab values."""
+    lab = _sample(laboratory_reference=None, sand=40, silt=35, clay=25, organic_matter=1.9)
+    pr1 = _sample(laboratory_reference=None, depth_from=0, depth_to=10, penetration_resistance=1.5)
+    pr2 = _sample(laboratory_reference=None, depth_from=10, depth_to=20, penetration_resistance=2.0)
+
+    async def query(type, q=None, geometry=None, **_):
+        return [] if geometry else [pr1, lab, pr2]
+    reading_orion.query_entities = AsyncMock(side_effect=query)
+    reading_orion.get_entity = AsyncMock(return_value=PARCEL)
+    (a,) = client.get("/v1/soil/parcel/parcel-1/lab-analyses", headers=HEADERS).json()["analyses"]
+    assert a["id"] == lab["id"] and len(a["horizons"]) == 1 and a["horizons"][0]["sand"] == 40
