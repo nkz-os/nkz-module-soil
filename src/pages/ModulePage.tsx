@@ -12,6 +12,7 @@ import { Select } from '@nekazari/ui-kit';
 import {
   apiErrorDetail, buildSamplingPayload, fromSelect, labErrors, NONE, P_METHODS, K_METHODS,
 } from '../lib/samplingPayload';
+import { matchParcelId, applyParcelPrefill } from '../lib/parcelPrefill';
 
 type Tab = 'dashboard' | 'manual' | 'csv' | 'leaf' | 'history';
 
@@ -527,6 +528,9 @@ function ManualSamplingTab() {
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const { data: parcels } = useEntities<NgsiLdEntity>('AgriParcel');
+  const [searchParams] = useSearchParams();
+  const parcelParam = searchParams.get('parcel');
+  const autoCoordsRef = React.useRef<{ lat: string; lon: string } | null>(null);
   const noneOption = { value: NONE, label: t('fields.none') };
   const parcelOptions = (parcels || []).map((p) => ({
     value: p.id as string,
@@ -567,6 +571,23 @@ function ManualSamplingTab() {
     Object.fromEntries([...fields.map((f) => f.key), ...selectKeys].map((k) => [k, '']))
   );
 
+  useEffect(() => {
+    if (!parcelParam || !parcels?.length) return;
+    setForm((prev) => {
+      if (prev.parcelId !== '') return prev;
+      const matched = matchParcelId(parcelParam, parcels);
+      if (!matched) return prev;
+      const { nextForm, autoCoords } = applyParcelPrefill(
+        prev,
+        matched,
+        parcels,
+        autoCoordsRef.current,
+      );
+      autoCoordsRef.current = autoCoords;
+      return nextForm;
+    });
+  }, [parcelParam, parcels]);
+
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const validate = useCallback((): string[] => {
@@ -606,7 +627,20 @@ function ManualSamplingTab() {
   }, [form, t]);
 
   const handleChange = (field: string, value: string) => {
-    setForm((prev: Record<string, string>) => ({ ...prev, [field]: value }));
+    if (field === 'parcelId') {
+      setForm((prev: Record<string, string>) => {
+        const { nextForm, autoCoords } = applyParcelPrefill(
+          prev,
+          value,
+          parcels,
+          autoCoordsRef.current,
+        );
+        autoCoordsRef.current = autoCoords;
+        return nextForm;
+      });
+    } else {
+      setForm((prev: Record<string, string>) => ({ ...prev, [field]: value }));
+    }
     // Clear error on change
     if (validationErrors[field]) {
       setValidationErrors((prev: Record<string, string>) => {
@@ -625,6 +659,7 @@ function ManualSamplingTab() {
       await api.uploadSamplingPoint(buildSamplingPayload(form));
       setResult({ type: 'success', message: t('success') });
       setForm(Object.fromEntries([...fields.map((f) => f.key), ...selectKeys].map((k) => [k, ''])));
+      autoCoordsRef.current = null;
     } catch (err) {
       const detail = apiErrorDetail(err);
       setResult({ type: 'error', message: detail ? `${t('error')} ${detail}` : t('error') });
