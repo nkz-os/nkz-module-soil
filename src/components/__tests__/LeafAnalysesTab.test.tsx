@@ -14,6 +14,8 @@ const api = {
   importLeafCsv: vi.fn(),
   listZonings: vi.fn(),
   exportLeafCsv: vi.fn(),
+  listLeafSamples: vi.fn(),
+  deleteLeafSample: vi.fn(),
 };
 vi.mock('../../hooks/useSoilApi', () => ({ useSoilApi: () => api }));
 
@@ -34,6 +36,8 @@ beforeEach(() => {
     { run_id: 'manual-abc', method: 'manual', date: '2026-06-01', zone_count: 2, labels: ['T1', 'T2'], is_default: false },
   ]);
   api.exportLeafCsv.mockResolvedValue(new Blob(['a,b\n']));
+  api.listLeafSamples.mockResolvedValue([]);
+  api.deleteLeafSample.mockResolvedValue(undefined);
 });
 afterEach(cleanup);
 
@@ -93,5 +97,36 @@ describe('LeafAnalysesTab', () => {
     expect(await screen.findByText('leaf.storedAsOther {"column":"N total (%)"}')).toBeTruthy();
     expect(screen.getByText('leaf.ignoredColumn {"column":"Notes"}')).toBeTruthy();
     expect(screen.getByText('leaf.updates {"count":1}')).toBeTruthy();
+  });
+
+  it('offers to replace the samples a row corrects, replacing by default', async () => {
+    api.previewLeafCsv.mockResolvedValue({
+      ...PREVIEW, rejected: [],
+      accepted: [{ ...PREVIEW.accepted[0], action: 'create', replaces: ['old-1'] }],
+    });
+    render(<LeafAnalysesTab />);
+    choose();
+    fireEvent.change(screen.getByLabelText('leaf.file'), { target: { files: [new File(['x'], 'leaf.csv')] } });
+    expect(await screen.findByText('leaf.corrections {"count":1}')).toBeTruthy();
+    const box = screen.getByLabelText('leaf.replaceOld') as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    fireEvent.click(screen.getByText('leaf.import'));
+    await waitFor(() => expect(api.importLeafCsv).toHaveBeenCalled());
+    expect(api.importLeafCsv.mock.calls[0][2]).toBe(true);
+  });
+
+  it('lists the parcel samples and deletes one after confirming', async () => {
+    api.listLeafSamples
+      .mockResolvedValueOnce([{ id: 's1', sampleCode: 'L-1', dateSampled: '2026-07-15', plantTissue: 'leaf', plantCodes: ['T-1'] }])
+      .mockResolvedValue([]);
+    render(<LeafAnalysesTab />);
+    choose();
+    expect(await screen.findByText('L-1')).toBeTruthy();
+    fireEvent.click(screen.getByText('leaf.delete'));
+    expect(api.deleteLeafSample).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('leaf.yes'));
+    await waitFor(() => expect(api.deleteLeafSample).toHaveBeenCalledWith('s1'));
+    await waitFor(() => expect(screen.queryByText('L-1')).toBeNull());
+    expect(screen.getByText('leaf.noSamples')).toBeTruthy();
   });
 });

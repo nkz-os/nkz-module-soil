@@ -13,6 +13,7 @@ import logging
 import math
 from datetime import date
 
+import httpx
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
 from nkz_platform_sdk import AuthContext
 from nkz_platform_sdk.gis import default_zoning, fetch_zonings, zone_of
@@ -85,6 +86,24 @@ def _day(text: str) -> str | None:
         return None
 
 
+def _unwrapped(entity: dict, attr: str):
+    v = _value(entity, attr)
+    return v.get("@value") if isinstance(v, dict) and "@value" in v else v
+
+
+def _corrected(existing: dict[str, dict], new_id: str, sample_code: str, day: str) -> list[str]:
+    """Stored samples a row probably corrects: same lab sample code in the same
+    year under another id (the date, tissue or trees changed, so the id did too).
+    A lab that reuses its codes every campaign does so in another year."""
+    out = []
+    for sid, e in existing.items():
+        if sid == new_id or str(_unwrapped(e, "sampleCode") or "") != sample_code:
+            continue
+        if str(_unwrapped(e, "dateSampled") or "")[:4] == day[:4]:
+            out.append(sid)
+    return sorted(out)
+
+
 async def _plants(orion: OrionClient, parcel_urn: str) -> dict[str, dict]:
     plants = await orion.query_all("AgriPlant", q=parcel_ref_query(parcel_urn))
     return {str(_value(p, "plantCode")): p for p in plants if _value(p, "plantCode")}
@@ -148,10 +167,15 @@ def _parse_row(row: dict, row_num: int, plants: dict, results_cols: list, other_
 async def import_plant_samples(
     parcel_id: str = Query(..., max_length=200),
     dry_run: bool = True,
+    replace_corrected: bool = False,
     file: UploadFile = _FILE,
     auth: AuthContext = _REQUIRE_AUTH,
 ):
-    """Preview (dry_run=true) or write leaf analyses of one parcel from a CSV."""
+    """Preview (dry_run=true) or write leaf analyses of one parcel from a CSV.
+
+    Each accepted row lists in ``replaces`` the stored samples it probably corrects;
+    with ``replace_corrected=true`` those are deleted once the row is stored, so they
+    stop counting in series and exports (the time-series history keeps them)."""
     tenant = auth.tenant_id
     parcel_urn = _parcel_urn(parcel_id)
     content = await file.read()
@@ -205,7 +229,9 @@ async def import_plant_samples(
             first_row[entity["id"]] = row_num
             accepted.append({"row": row_num, "id": entity["id"], "plantCodes": parsed["plant_codes"],
                              "dateSampled": parsed["date_sampled"],
-                             "action": "update" if entity["id"] in existing else "create"})
+                             "action": "update" if entity["id"] in existing else "create",
+                             "replaces": _corrected(existing, entity["id"], parsed["sample_code"],
+                                                    parsed["date_sampled"])})
             entities.append(entity)
 
         created = 0
@@ -233,6 +259,18 @@ async def import_plant_samples(
                                          tenant, entity["id"], attr)
                         warnings.append({"code": "stale_not_removed", "column": attr,
                                          "row": rows_by_id.get(entity["id"])})
+            if replace_corrected:
+                kept = {e["id"] for e in entities}
+                for a in accepted:
+                    for old_id in a["replaces"]:
+                        if old_id in kept:
+                            continue
+                        try:
+                            await orion.delete_entity(old_id)
+                            logger.info("leaf sample replaced tenant=%s old=%s new=%s", tenant, old_id, a["id"])
+                        except Exception:
+                            logger.exception("corrected leaf sample not removed tenant=%s id=%s", tenant, old_id)
+                            warnings.append({"code": "replace_failed", "column": old_id, "row": a["row"]})
     logger.info("leaf samples %s tenant=%s parcel=%s accepted=%d rejected=%d",
                 "previewed" if dry_run else "written", tenant, parcel_urn, len(accepted), len(rejected))
     return {"accepted": accepted, "rejected": rejected, "warnings": warnings, "created": created}
@@ -286,3 +324,36 @@ async def export_plant_samples(
     filename = f"leaf-analyses-{parcel_urn.rsplit(':', 1)[-1]}.csv"
     return Response(content=buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/parcel/{parcel_id}/plant-samples")
+async def list_plant_samples(parcel_id: str, auth: AuthContext = _REQUIRE_AUTH):
+    """The parcel's leaf samples, newest first, to review or delete them."""
+    parcel_urn = _parcel_urn(parcel_id)
+    async with OrionClient(auth.tenant_id) as orion:
+        samples = await orion.query_all("AgriPlantSample", q=parcel_ref_query(parcel_urn))
+    rows = []
+    for e in samples:
+        r = to_rows(e)
+        rows.append({"id": e.get("id"), "sampleCode": r["sampleCode"], "dateSampled": r["dateSampled"],
+                     "plantTissue": r["plantTissue"],
+                     "plantCodes": [c for c in (r["plantCodes"] or "").split(";") if c]})
+    rows.sort(key=lambda x: (str(x["dateSampled"] or ""), str(x["sampleCode"] or "")), reverse=True)
+    return {"samples": rows}
+
+
+@router.delete("/plant-samples/{sample_id}", status_code=204)
+async def delete_plant_sample(sample_id: str, auth: AuthContext = _REQUIRE_AUTH):
+    """Delete one leaf sample (a wrong or superseded analysis): it stops counting in
+    the tree series and the export; the time-series history keeps its rows."""
+    if not sample_id.startswith(f"urn:ngsi-ld:AgriPlantSample:{auth.tenant_id}:"):
+        raise HTTPException(status_code=404, detail="sample not found")
+    async with OrionClient(auth.tenant_id) as orion:
+        try:
+            await orion.delete_entity(sample_id)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                raise HTTPException(status_code=404, detail="sample not found") from exc
+            raise
+    logger.info("leaf sample deleted tenant=%s id=%s", auth.tenant_id, sample_id)
+    return Response(status_code=204)

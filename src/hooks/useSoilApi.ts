@@ -46,10 +46,24 @@ export interface SoilSummary {
 const SOIL_API_BASE = `${API_ORIGIN}/api/soil`;
 
 export interface LeafImportResult {
-  accepted: Array<{ row: number; id: string; plantCodes: string[]; dateSampled: string; action?: 'create' | 'update' }>;
+  accepted: Array<{
+    row: number; id: string; plantCodes: string[]; dateSampled: string;
+    action?: 'create' | 'update';
+    /** Stored samples this row probably corrects (same lab code, same year, another id). */
+    replaces?: string[];
+  }>;
   rejected: Array<{ row: number; error: string }>;
   warnings: Array<{ code: string; column: string; row?: number }>;
   created: number;
+}
+
+/** A stored leaf sample of a parcel, as listed for review or deletion. */
+export interface LeafSample {
+  id: string;
+  sampleCode: string | null;
+  dateSampled: string | null;
+  plantTissue: string | null;
+  plantCodes: string[];
 }
 
 /** A zoning of the parcel (gis-routing): automatic (NDVI…) or manual treatment zones. */
@@ -96,9 +110,19 @@ export function buildSoilApi(api: ApiClient) {
       api.post<LeafImportResult>(
         `/plant-samples/batch?parcel_id=${encodeURIComponent(parcelId)}&dry_run=true`, formData),
 
-    importLeafCsv: (parcelId: string, formData: FormData) =>
+    importLeafCsv: (parcelId: string, formData: FormData, replaceCorrected = false) =>
       api.post<LeafImportResult>(
-        `/plant-samples/batch?parcel_id=${encodeURIComponent(parcelId)}&dry_run=false`, formData),
+        `/plant-samples/batch?parcel_id=${encodeURIComponent(parcelId)}&dry_run=false` +
+        (replaceCorrected ? '&replace_corrected=true' : ''), formData),
+
+    listLeafSamples: async (parcelId: string) =>
+      (await api.get<{ samples: LeafSample[] }>(`/parcel/${parcelApiPath(parcelId)}/plant-samples`)).samples,
+
+    deleteLeafSample: async (sampleId: string) => {
+      const r = await fetch(`${SOIL_API_BASE}/plant-samples/${encodeURIComponent(sampleId)}`,
+        { method: 'DELETE', credentials: 'include' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    },
 
     // Zonings live in gis-routing; read them through the platform API origin.
     listZonings: (parcelId: string) =>
