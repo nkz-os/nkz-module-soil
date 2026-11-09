@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEntities } from '@nekazari/module-kit';
-import { useSoilApi, type LeafImportResult, type ZoningSummary } from '../hooks/useSoilApi';
+import { useSoilApi, type LeafImportResult, type LeafSample, type ZoningSummary } from '../hooks/useSoilApi';
 
 interface ParcelEntity {
   id: string;
@@ -35,10 +35,23 @@ export function LeafAnalysesTab() {
   const [busy, setBusy] = useState(false);
   const [zonings, setZonings] = useState<ZoningSummary[]>([]);
   const [zoning, setZoning] = useState(NO_ZONING);
+  const [replaceOld, setReplaceOld] = useState(true);
+  const [samples, setSamples] = useState<LeafSample[]>([]);
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  const loadSamples = React.useCallback(async (id: string) => {
+    try {
+      setSamples(await api.listLeafSamples(id));
+    } catch {
+      setSamples([]);
+    }
+  }, [api]);
 
   useEffect(() => {
     setZonings([]); setZoning(NO_ZONING); setPreview(null); setFile(null); setWritten(null); setError(null);
+    setSamples([]); setConfirming(null);
     if (!parcelId) return;
+    void loadSamples(parcelId);
     let cancelled = false;
     api.listZonings(parcelId)
       .then((zs) => {
@@ -48,12 +61,12 @@ export function LeafAnalysesTab() {
       })
       .catch(() => { if (!cancelled) setZonings([]); });
     return () => { cancelled = true; };
-  }, [parcelId, api]);
+  }, [parcelId, api, loadSamples]);
 
   const form = (f: File) => { const fd = new FormData(); fd.append('file', f); return fd; };
 
   const onFile = async (f: File) => {
-    setFile(f); setPreview(null); setWritten(null); setError(null); setBusy(true);
+    setFile(f); setPreview(null); setWritten(null); setError(null); setReplaceOld(true); setBusy(true);
     try {
       setPreview(await api.previewLeafCsv(parcelId, form(f)));
     } catch (e) {
@@ -67,9 +80,10 @@ export function LeafAnalysesTab() {
     if (!file) return;
     setBusy(true); setError(null);
     try {
-      const res = await api.importLeafCsv(parcelId, form(file));
+      const res = await api.importLeafCsv(parcelId, form(file), corrections > 0 && replaceOld);
       setWritten(res.created);
       setPreview(res.rejected.length ? res : null);
+      void loadSamples(parcelId);
     } catch (e) {
       setError((e as { message?: string })?.message || t('leaf.importFailed'));
     } finally {
@@ -93,6 +107,17 @@ export function LeafAnalysesTab() {
   };
 
   const updates = preview ? preview.accepted.filter((a) => a.action === 'update').length : 0;
+  const corrections = preview ? preview.accepted.filter((a) => (a.replaces ?? []).length > 0).length : 0;
+
+  const doDelete = async (id: string) => {
+    setConfirming(null); setError(null);
+    try {
+      await api.deleteLeafSample(id);
+      await loadSamples(parcelId);
+    } catch {
+      setError(t('leaf.deleteFailed'));
+    }
+  };
 
   return (
     <div className="bg-nkz-surface rounded-nkz-md p-6 space-y-4">
@@ -131,6 +156,15 @@ export function LeafAnalysesTab() {
                 </ul>
               )}
               {updates > 0 && <p className="text-nkz-sm text-nkz-muted">{t('leaf.updates', { count: updates })}</p>}
+              {corrections > 0 && written === null && (
+                <div className="space-y-1">
+                  <p className="text-nkz-sm text-nkz-muted">{t('leaf.corrections', { count: corrections })}</p>
+                  <label className="flex items-center gap-2 text-nkz-sm">
+                    <input type="checkbox" checked={replaceOld} onChange={(e) => setReplaceOld(e.target.checked)} />
+                    {t('leaf.replaceOld')}
+                  </label>
+                </div>
+              )}
               {preview.warnings.length > 0 && (
                 <ul className="text-nkz-xs text-nkz-muted">
                   {preview.warnings.map((w, i) => <li key={`${w.code}-${w.column}-${i}`}>{t(WARNING_KEYS[w.code] ?? 'leaf.ignoredColumn', { column: w.column })}</li>)}
@@ -144,6 +178,35 @@ export function LeafAnalysesTab() {
               )}
             </div>
           )}
+
+          <div className="border-t border-nkz-border pt-4 space-y-2">
+            <h3 className="text-nkz-sm font-medium">{t('leaf.samples')}</h3>
+            {samples.length === 0 ? (
+              <p className="text-nkz-sm text-nkz-muted">{t('leaf.noSamples')}</p>
+            ) : (
+              <ul className="text-nkz-sm divide-y divide-nkz-border">
+                {samples.map((s) => (
+                  <li key={s.id} className="flex items-center justify-between gap-2 py-1">
+                    <span>
+                      {(s.dateSampled ?? '')} · <span className="font-medium">{s.sampleCode}</span> · {s.plantTissue} · {s.plantCodes.join(', ')}
+                    </span>
+                    {confirming === s.id ? (
+                      <span className="flex items-center gap-2">
+                        <span className="text-nkz-muted">{t('leaf.confirmDelete')}</span>
+                        <button type="button" onClick={() => { void doDelete(s.id); }}
+                          className="px-2 py-1 rounded-nkz-sm bg-nkz-danger text-white text-nkz-xs">{t('leaf.yes')}</button>
+                        <button type="button" onClick={() => setConfirming(null)}
+                          className="px-2 py-1 rounded-nkz-sm border border-nkz-border text-nkz-xs">{t('leaf.no')}</button>
+                      </span>
+                    ) : (
+                      <button type="button" onClick={() => setConfirming(s.id)}
+                        className="px-2 py-1 rounded-nkz-sm border border-nkz-border text-nkz-xs hover:bg-nkz-muted/5">{t('leaf.delete')}</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
           <div className="border-t border-nkz-border pt-4 space-y-2">
             <label className="block">

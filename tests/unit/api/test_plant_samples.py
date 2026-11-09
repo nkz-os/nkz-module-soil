@@ -59,6 +59,20 @@ def orion():
     mock.query_all = AsyncMock(side_effect=query)
     mock.upsert_entities_batch = AsyncMock(side_effect=upsert)
     mock.delete_entity_attr = AsyncMock(side_effect=delete_attr)
+
+    async def delete_entity(entity_id):
+        before = len(store["AgriPlantSample"])
+        store["AgriPlantSample"] = [e for e in store["AgriPlantSample"] if e["id"] != entity_id]
+        if len(store["AgriPlantSample"]) == before:
+            import httpx
+            raise httpx.HTTPStatusError("404", request=httpx.Request("DELETE", "http://orion"),
+                                        response=httpx.Response(404))
+
+    async def get_entity(entity_id):
+        return next((e for e in store["AgriPlantSample"] if e["id"] == entity_id), None)
+
+    mock.delete_entity = AsyncMock(side_effect=delete_entity)
+    mock.get_entity = AsyncMock(side_effect=get_entity)
     mock.store = store
     with patch("nkz_soil.api.routes.plant_samples.OrionClient", return_value=mock):
         yield mock
@@ -242,3 +256,56 @@ def test_export_without_zones(client, orion):
     with patch("nkz_soil.api.routes.plant_samples.fetch_zonings", AsyncMock(return_value=[ZONING])):
         rows = _export(client, "?zoning_run_id=none")
     assert {r["zoneLabel"] for r in rows} == {""} and {r["zoningRunId"] for r in rows} == {""}
+
+
+ONE = "plantCode,dateSampled,sampleCode,plantTissue,N (%)\n{code},{day},L-1,{tissue},1.8\n"
+
+
+def _one(client, dry_run, code="T-1", day="2026-07-15", tissue="leaf", replace=False):
+    q = "&replace_corrected=true" if replace else ""
+    return client.post(f"/v1/soil/plant-samples/batch?parcel_id={PARCEL}&dry_run={'true' if dry_run else 'false'}{q}",
+                       files={"file": ("leaf.csv", ONE.format(code=code, day=day, tissue=tissue), "text/csv")},
+                       headers=HEADERS).json()
+
+
+def test_preview_flags_probable_correction(client, orion):
+    old = _one(client, False)["accepted"][0]["id"]
+    for changed in ({"day": "2026-07-16"}, {"tissue": "fruit"}, {"code": "T-2"}):
+        a = _one(client, True, **changed)["accepted"][0]
+        assert a["action"] == "create" and a["replaces"] == [old], changed
+
+
+def test_same_code_next_campaign_is_not_a_correction(client, orion):
+    _one(client, False, day="2025-07-15")
+    assert _one(client, True, day="2026-07-15")["accepted"][0]["replaces"] == []
+
+
+def test_commit_replaces_only_when_asked(client, orion):
+    _one(client, False)
+    _one(client, False, day="2026-07-16")
+    assert len(orion.store["AgriPlantSample"]) == 2
+    _one(client, False, day="2026-07-17", replace=True)
+    (left,) = orion.store["AgriPlantSample"]
+    assert left["dateSampled"]["value"]["@value"].startswith("2026-07-17")
+
+
+def test_list_samples_of_parcel(client, orion):
+    _batch(client, LEAF_CSV, False)
+    r = client.get(f"/v1/soil/parcel/{PARCEL}/plant-samples", headers=HEADERS)
+    assert r.status_code == 200, r.text
+    rows = sorted(r.json()["samples"], key=lambda x: x["sampleCode"])
+    assert [(x["sampleCode"], x["plantCodes"], x["dateSampled"], x["plantTissue"]) for x in rows] == [
+        ("L-1", ["T-1"], "2026-07-15", "leaf"), ("L-2", ["T-1", "T-2"], "2026-07-15", "leaf")]
+
+
+def test_delete_sample(client, orion):
+    sid = _one(client, False)["accepted"][0]["id"]
+    r = client.delete(f"/v1/soil/plant-samples/{sid}", headers=HEADERS)
+    assert r.status_code == 204 and orion.store["AgriPlantSample"] == []
+    assert client.delete(f"/v1/soil/plant-samples/{sid}", headers=HEADERS).status_code == 404
+
+
+def test_delete_refuses_other_entities(client, orion):
+    for bad in ("urn:ngsi-ld:AgriPlant:tenant1:demo-parcel-001:T-1", "urn:ngsi-ld:AgriPlantSample:other:abc"):
+        assert client.delete(f"/v1/soil/plant-samples/{bad}", headers=HEADERS).status_code == 404
+    orion.delete_entity.assert_not_called()
