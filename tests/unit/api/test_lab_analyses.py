@@ -113,3 +113,15 @@ def test_geometry_query_error_keeps_linked_results(client, mock_orion):
     resp = client.get("/v1/soil/parcel/parcel-1/lab-analyses", headers=HEADERS)
     assert resp.status_code == 200
     assert [a["id"].split(":")[-1] for a in resp.json()["analyses"]] == ["b"]
+
+
+def test_legacy_point_with_zone_link_exposes_it(client, mock_orion):
+    zone = "urn:ngsi-ld:AgriManagementZone:parcel-1:run1:L2"
+    linked = {**_point("z", "2026-10-02", {"depthFrom": 0, "depthTo": 30, "ph": 7.5}),
+              "hasAgriManagementZone": {"type": "Relationship", "object": zone}}
+    _wire(mock_orion, [linked], [])
+    body = client.get("/v1/soil/parcel/parcel-1/lab-analyses", headers=HEADERS).json()
+    assert body["analyses"][0]["hasAgriManagementZone"] == zone
+    _wire(mock_orion, [LINKED_NEW], [])
+    body = client.get("/v1/soil/parcel/parcel-1/lab-analyses", headers=HEADERS).json()
+    assert "hasAgriManagementZone" not in body["analyses"][0]
