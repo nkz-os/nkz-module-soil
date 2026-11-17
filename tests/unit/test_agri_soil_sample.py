@@ -157,3 +157,24 @@ def test_undated_id_uses_the_stored_day():
 
 def test_parcel_id_form_does_not_change_the_id():
     assert sample_id("tenant-a", _row(parcel_id="demo-parcel-001")) == sample_id("tenant-a", _row(parcel_id=PARCEL))
+
+
+ZONE = "urn:ngsi-ld:AgriManagementZone:demo-parcel-001:run1:L1"
+
+
+def test_analysis_carries_the_zone_of_its_core():
+    top = to_entity("tenant-a", _row(depth_from=0, depth_to=30, sand=40, silt=35, clay=25, zone_id=ZONE))
+    sub = to_entity("tenant-a", _row(depth_from=30, depth_to=60, sand=30, silt=40, clay=30, zone_id=ZONE))
+    (a,) = to_analysis([sub, top])
+    assert a["hasAgriManagementZone"] == ZONE
+
+
+def test_analysis_without_zone_has_no_zone_key():
+    (a,) = to_analysis([to_entity("tenant-a", _row(sand=40, silt=35, clay=25))])
+    assert "hasAgriManagementZone" not in a
+
+
+def test_zone_read_as_orion_compacts_it():
+    e = to_entity("tenant-a", _row(sand=40, silt=35, clay=25))
+    e["hasAgriManagementZone"] = ZONE  # a bare object value
+    assert to_analysis([e])[0]["hasAgriManagementZone"] == ZONE

@@ -11,6 +11,7 @@ from nkz_soil.config import SOIL_DEFAULT_CONTRACTED_HA
 from nkz_soil.models.agri_soil_sample import (
     SOIL_SAMPLE_TYPES,
     is_agri_soil_sample,
+    management_zone,
     sampling_day,
     to_analysis,
 )
@@ -245,7 +246,7 @@ def _lab_entry(entity: dict, linked_by: str) -> dict | None:
         {"lat": coords[1], "lon": coords[0]}
         if isinstance(coords, list) and len(coords) >= 2 else None
     )
-    return {
+    entry = {
         "id": entity.get("id"),
         "samplingDate": _value(entity, "samplingDate"),
         "laboratoryReference": _value(entity, "laboratoryReference"),
@@ -255,6 +256,10 @@ def _lab_entry(entity: dict, linked_by: str) -> dict | None:
         "dataSource": "lab_analysis",
         "horizons": horizons,
     }
+    zone = management_zone(entity)
+    if zone:
+        entry["hasAgriManagementZone"] = zone
+    return entry
 
 
 @router.get("/parcel/{parcel_id}/lab-analyses")

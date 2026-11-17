@@ -193,6 +193,16 @@ def _point(entity: dict) -> tuple[float, float] | None:
     return None
 
 
+def management_zone(entity: dict) -> str | None:
+    """URN of the management zone a sample was taken for (``hasAgriManagementZone``), if any.
+
+    Orion returns the Relationship as ``{"object": urn}`` or, compacted, as the bare URN.
+    """
+    rel = entity.get("hasAgriManagementZone")
+    urn = rel.get("object") if isinstance(rel, dict) else rel
+    return urn if isinstance(urn, str) and urn else None
+
+
 def to_analysis(entities: Iterable[dict], linked_by: str = "hasAgriParcel") -> list[dict]:
     """Legacy ``/lab-analyses`` entries: the depths of one core (same date, place and
     sample code) form one analysis, horizons sorted by depth. The analysis id is the
@@ -218,4 +228,7 @@ def to_analysis(entities: Iterable[dict], linked_by: str = "hasAgriParcel") -> l
             "dataSource": "lab_analysis",
             "horizons": [to_horizon(m) for m in members],
         })
+        zone = next((z for z in (management_zone(m) for m in members) if z), None)
+        if zone:
+            out[-1]["hasAgriManagementZone"] = zone
     return out
